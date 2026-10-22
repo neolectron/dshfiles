@@ -1,0 +1,5 @@
+{
+  "extends": "../../../tsconfig.base.client.json",
+  "compilerOptions": { "types": ["node", "react"] },
+  "include": ["src", "dshx.config.ts"]
+}

@@ -1,0 +1,3 @@
+- insert:
+    - id: dshfiles-bots
+      name: '@dshfiles/bots'
