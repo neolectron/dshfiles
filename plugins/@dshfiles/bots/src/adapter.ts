@@ -1,9 +1,11 @@
-import type { BotAdapterInfo, BotIdentity } from './contract.js'
+import type {} from '@deepseek-ai/cordis'
+import { botAdapterInfoSchema, type BotAdapterInfo, type BotIdentity } from './contract.js'
 export type { BotAdapterInfo, BotIdentity, BotCapabilities } from './contract.js'
 
 /** Version-one neutral port. No provider payloads, credentials or UI components cross it. */
 export interface AdapterMessage {
   readonly id: string
+  /** An idempotent user operation; bot replies may carry it for correlation but retain their own message IDs. */
   readonly requestId: string | null
   readonly author: 'bot' | 'user'
   readonly text: string
@@ -21,6 +23,8 @@ export interface BotPollInput {
 export interface BotSendInput {
   readonly remoteBotId: string
   readonly conversationId: string
+  /** Original persisted link boundary, not the newly discovered reconnect baseline. */
+  readonly initialCursor: string | null
   readonly requestId: string
   readonly text: string
   readonly signal: AbortSignal
@@ -58,8 +62,11 @@ export const createBotAdapterRegistry = (): BotAdapterRegistry => {
   const notify = (): void => { for (const listener of listeners) listener() }
   return {
     register(adapter) {
-      if (adapter.info.version !== 1 || adapters.has(adapter.info.id)) throw new Error('Bot adapter version or identity is not available.')
-      adapters.set(adapter.info.id, adapter); notify()
+      const info = botAdapterInfoSchema.parse(adapter.info)
+      if (adapters.has(info.id)) throw new Error('Bot adapter identity is already registered.')
+      if (!Number.isSafeInteger(adapter.pollIntervalMs) || adapter.pollIntervalMs < 1000 || adapter.pollIntervalMs > 300000) throw new Error('Bot polling interval must be bounded between one second and five minutes.')
+      if (new Set(info.fields.map(field => field.key)).size !== info.fields.length) throw new Error('Bot adapter field keys must be unique.')
+      adapters.set(info.id, adapter); notify()
       return () => { if (adapters.get(adapter.info.id) === adapter) { adapters.delete(adapter.info.id); notify() } }
     },
     list: () => [...adapters.values()],

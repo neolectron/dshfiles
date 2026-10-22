@@ -85,14 +85,14 @@ Host storage owns connection references, verified bot identity, per-conversation
 
 | Milestone | Status | Evidence |
 | --- | --- | --- |
-| Plan, schemas and adapter contract | In progress | Isolated worktree; supported contracts inspected. |
-| Durable Bots Host/store and substitution tests | Pending | |
-| Dot adapter with protocol/security fixtures | Pending | |
-| Roster, connection form and conversation | Pending | |
+| Plan, schemas and adapter contract | Complete | Versioned public adapter/API modules; independent-registry and unsafe-link tests pass (4 tests). |
+| Durable Bots Host/store and substitution tests | Complete | Parent rerun: 40 adapter/engine/store/real Cordis+JSON tests pass, including atomic persistence, restart, uncertain sends, edits and capability boundaries. |
+| Dot adapter with protocol/security fixtures | Complete | Parent rerun: 55 synthetic protocol/security/Host tests + strict types pass; no real-account authentication. |
+| Roster, connection form and conversation | In progress | Scratch proves roster, safe linking, send/echo/proactive and narrow-pane navigation; consent deadlock fixed with real DOM tests. Scroll-follow polish underway. |
 | Build/import/contract and scratch browser proof | Pending | |
 | Documentation, deployment and completion review | Pending | |
 
-**Resume here:** Define the shared v1 schemas and adapter contract; delegate non-overlapping Host, UI and Dot implementation. Dependency setup is running as job `bash-be8bebdbe30748cc`.
+**Resume here:** Finish DOM scroll-follow checks, rerun all three Bots journeys with `DSHX_E2E_CHROMIUM_EXECUTABLE=/etc/profiles/per-user/neolectron/bin/google-chrome` and scratch-only PATH launcher, capture/reference screenshot, walk catalog reaches with isolated dshx dev, then run final scoped lint/build/import checks. All earlier parent jobs have been collected; no user credentials or live profile were touched. Pinned Playwright headless1194 cannot run on this NixOS host (missing libglib); the explicit system Chrome155 override is tested and its version is included in both task and scenario cache keys.
 
 ## Open questions / proof gates
 

@@ -1,0 +1,3 @@
+- insert:
+    - id: dshfiles-bot-openai-dot
+      name: '@dshfiles/bot-openai-dot'

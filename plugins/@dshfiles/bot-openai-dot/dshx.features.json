@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "kind": "bundle",
+  "features": [
+    {
+      "id": "verified-dot-messaging",
+      "title": "Verified existing OpenAI Dot text messaging",
+      "summary": "A Host-only, separately AGPL-3.0-only adapter registers on the neutral v1 Bots registry, links the existing primary Dot through exact account-bound DM discovery, polls since-link text updates every three seconds and reconciles stable UUID sends without duplicating unknown delivery.",
+      "surfaces": ["host"],
+      "configuration": [
+        { "key": "accessTokenRef", "defaultValue": "", "constraints": "Required canonical credential-port secret reference; no raw access token or implicit environment fallback.", "coveredBy": ["dot.registry-and-capabilities"] },
+        { "key": "sessionTokenRef", "defaultValue": "", "constraints": "Required canonical renewable session secret reference; no raw value, extraction or automatic vault write.", "coveredBy": ["dot.registry-and-capabilities", "dot.session-renewal"] }
+      ],
+      "states": ["adapter-registered", "reference-unresolved", "discovering", "identity-verified", "since-link", "polling", "sent", "delivery-unknown", "reconciled", "auth-required", "access-denied", "rate-limited", "closed"],
+      "failureModes": [
+        "Raw credentials, extra configuration fields, malformed token binding, mismatched Dot/thread/room/account or unknown message authors fail closed.",
+        "403 or provider browser challenge stops without bypass, impersonation, proxy rotation or browser extraction.",
+        "Nonadvancing or malformed pagination retains the checkpoint; an incomplete reconciliation scan is unknown, not absent.",
+        "Transport failure, malformed send acknowledgment or mismatched sender/request identity never justifies a new automatic POST.",
+        "Renewal must preserve account, user and account-user mapping. Rotated credentials remain memory-only and reconnect resolves the original vault references again.",
+        "Unsupported media or elicitation yields a safe notice/native ChatGPT handoff; no attachments, inline approvals, activity or WebSocket capability is advertised."
+      ],
+      "externalDependencies": [
+        {
+          "id": "beeper/chatgpt-dots@ee43cb5c2b8a27e0759d74fb14b24d749ce01fdb",
+          "boundary": "Pinned AGPL protocol source port: client.go, connector/login.go, connector/client.go and inspected chatgpt/signals.go; no Go/Matrix runtime dependency.",
+          "deterministicFake": "tests/adapter.test.ts uses synthetic account/member/token fixtures and a scripted Fetch boundary, never an account or authenticated network call."
+        },
+        {
+          "id": "https://chatgpt.com private messaging and auth endpoints",
+          "boundary": "Fixed HTTPS path allowlist only; redirects rejected, 15-second request timeout, bounded response bodies and zod decoding; broad credentials stay in Host memory.",
+          "deterministicFake": "tests/adapter.test.ts exercises discovery, send, pagination, auth renewal, identity changes and error redaction with local Response fixtures."
+        },
+        {
+          "id": "@dshfiles/credential-port and @dshfiles/bots/adapter v1",
+          "boundary": "Canonical reference parsing/Host-only resolver bundled in Host; public built BotAdapter module remains runtime external.",
+          "deterministicFake": "tests/adapter.test.ts injects a reference resolver and registers the adapter on the real neutral registry."
+        }
+      ],
+      "verification": [
+        { "kind": "unit-test", "id": "dot.registry-and-capabilities", "file": "plugins/@dshfiles/bot-openai-dot/tests/adapter.test.ts", "testName": "registers v1 with a neutral registry and honest unsupported capabilities" },
+        { "kind": "unit-test", "id": "dot.stable-send", "file": "plugins/@dshfiles/bot-openai-dot/tests/adapter.test.ts", "testName": "sends the same UUID in both stable request fields and preserves user authorship" },
+        { "kind": "unit-test", "id": "dot.incoming-author-and-handoff", "file": "plugins/@dshfiles/bot-openai-dot/tests/adapter.test.ts", "testName": "requests limit=32 and after, normalizes chronological distinct authors with safe unsupported handoff" },
+        { "kind": "unit-test", "id": "dot.reconcile-original-boundary", "file": "plugins/@dshfiles/bot-openai-dot/tests/adapter.test.ts", "testName": "finds request across bounded history from original persisted baseline (not discovery baseline)" },
+        { "kind": "unit-test", "id": "dot.incomplete-history-unknown", "file": "plugins/@dshfiles/bot-openai-dot/tests/adapter.test.ts", "testName": "reports unknown for incomplete history, repeated cursors and scan budget exhaustion" },
+        { "kind": "unit-test", "id": "dot.session-renewal", "file": "plugins/@dshfiles/bot-openai-dot/tests/adapter.test.ts", "testName": "refreshes on 401 in memory, applies only session cookie at auth endpoint and reuses stable UUID" },
+        { "kind": "unit-test", "id": "dot.recent-edits-deletions", "file": "plugins/@dshfiles/bot-openai-dot/tests/adapter.test.ts", "testName": "replays edited and deleted recently-seen stable IDs with deletion time and bounded overlap" },
+        { "kind": "unit-test", "id": "dot.response-bounds", "file": "plugins/@dshfiles/bot-openai-dot/tests/adapter.test.ts", "testName": "bounds malformed JSON, advertised length and streaming bodies without exposing payloads" },
+        { "kind": "unit-test", "id": "dot.host-registration", "file": "plugins/@dshfiles/bot-openai-dot/tests/host.test.ts", "testName": "registers through the real Cordis Host lifecycle and unregisters on disposal without credentials" }
+      ]
+    }
+  ]
+}

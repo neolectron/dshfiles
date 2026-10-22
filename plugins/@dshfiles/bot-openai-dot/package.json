@@ -1,0 +1,59 @@
+{
+  "name": "@dshfiles/bot-openai-dot",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Unofficial existing OpenAI Dot text adapter, ported from Beeper chatgpt-dots.",
+  "license": "AGPL-3.0-only",
+  "files": [
+    "dist",
+    "src",
+    "tests",
+    "dshx.config.ts",
+    "tsconfig.json",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE",
+    "PROVENANCE.md",
+    "dshx.features.json"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "exports": {
+    ".": "./dist/index.js",
+    "./package.json": "./package.json",
+    "./cordis.patch.yml": "./cordis.patch.yml"
+  },
+  "scripts": {
+    "build": "dshx build",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test:boot": "node ../../../tooling/dshx/scripts/boot-check-web.mjs --plugin"
+  },
+  "dependencies": {
+    "@dshfiles/bots": "workspace:*",
+    "@dshfiles/credential-port": "workspace:*",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "catalog:",
+    "@deepseek-ai/dsh": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-tools": "catalog:",
+    "@dshfiles/dshx": "workspace:*",
+    "@types/node": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "~4.0.4",
+    "@deepseek-ai/dsh": ">=0.2.1-rc.2 <0.3.0-0",
+    "@deepseek-ai/dsh-tools": ">=0.2.1-rc.2 <0.3.0-0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "dshx": {
+    "features": "./dshx.features.json"
+  }
+}
