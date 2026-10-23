@@ -143,7 +143,7 @@ async function sourcePlan(sourceRoot) {
   for (const name of packages) {
     const prefix = `plugins/@dshfiles/${name}/`
     const required = ['package.json', 'dshx.config.ts', 'tsconfig.json', 'cordis.patch.yml']
-    if (name === 'bot-openai-dot') required.push('LICENSE', 'PROVENANCE.md', 'README.md')
+    if (name === 'bot-openai-dot') required.push('LICENSE', 'NOTICE.md', 'PROVENANCE.md', 'README.md')
     if (name === 'bots') required.push('README.md')
     for (const file of required) assert.ok(tracked.includes(prefix + file), `Missing tracked build input: ${prefix + file}`)
     for (const path of tracked.filter(path => path.startsWith(prefix))) {

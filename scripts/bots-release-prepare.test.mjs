@@ -184,6 +184,7 @@ async function sourceFixture(t) {
       'cordis.patch.yml': '- id: safe-plugin\n',
       LICENSE: 'AGPL fixture license\nFull attribution and redistribution terms retained verbatim.\n',
       'PROVENANCE.md': '# Pinned upstream\nOriginal authors and source reference.\n',
+      'NOTICE.md': 'MIT fixture viewer notice\nCopyright and complete permission notice are retained.\n',
       'README.md': '# Adapter\nSee [LICENSE](LICENSE), [provenance](PROVENANCE.md) and ![synthetic](docs/screenshots/evidence.png).\n',
       'tests/port.test.ts': 'export const fixtureUsesSyntheticCredentialsOnly = true',
       'src/host.ts': 'export const fixture = 1',
@@ -209,7 +210,7 @@ async function sourceFixture(t) {
 test('source plan copies current tracked code and safe bundle metadata, not stale dist/private/untracked files', async t => {
   const { roots } = await sourceFixture(t)
   const plan = await sourcePlan(roots.sourceRoot)
-  assert.equal(plan.length, 57)
+  assert.equal(plan.length, 61)
   assert.ok(plan.some(entry => entry.destination === 'packages/@dshfiles/secret-catalog/src/host.ts'))
   assert.ok(plan.some(entry => entry.destination === 'packages/@dshfiles/secret-catalog/package.json'))
   for (const path of ['src/accounts/index.ts', 'src/browser/view.ts', 'src/profiles/schema.ts']) {
@@ -230,7 +231,7 @@ test('source plan copies current tracked code and safe bundle metadata, not stal
 test('retains full Dot license, provenance, README, fixtures and committed synthetic README image bytes', async t => {
   const { roots } = await sourceFixture(t)
   const plan = await sourcePlan(roots.sourceRoot)
-  for (const suffix of ['LICENSE', 'PROVENANCE.md', 'README.md', 'tests/port.test.ts', 'docs/screenshots/evidence.png']) {
+  for (const suffix of ['LICENSE', 'NOTICE.md', 'PROVENANCE.md', 'README.md', 'tests/port.test.ts', 'docs/screenshots/evidence.png']) {
     const entry = plan.find(entry => entry.destination === `packages/@dshfiles/bot-openai-dot/${suffix}`)
     assert.ok(entry, `Missing corresponding-source/legal documentation: ${suffix}`)
     const bytes = await readFile(join(roots.sourceRoot, 'plugins/@dshfiles/bot-openai-dot', suffix))
@@ -266,6 +267,11 @@ test('refuses a Dot source checkout missing its tracked AGPL license rather than
   const { roots } = await sourceFixture(t)
   execFileSync('git', ['rm', '--cached', 'plugins/@dshfiles/bot-openai-dot/LICENSE'], { cwd: roots.sourceRoot })
   await assert.rejects(sourcePlan(roots.sourceRoot), /Missing tracked build input.*bot-openai-dot\/LICENSE/)
+})
+test('refuses a Dot checkout missing the tracked MIT viewer notice', async t => {
+  const { roots } = await sourceFixture(t)
+  execFileSync('git', ['rm', '--cached', 'plugins/@dshfiles/bot-openai-dot/NOTICE.md'], { cwd: roots.sourceRoot })
+  await assert.rejects(sourcePlan(roots.sourceRoot), /Missing tracked build input.*bot-openai-dot\/NOTICE\.md/)
 })
 test('source plan refuses tracked symlinks to private/external source', async t => {
   const { roots, root } = await sourceFixture(t)

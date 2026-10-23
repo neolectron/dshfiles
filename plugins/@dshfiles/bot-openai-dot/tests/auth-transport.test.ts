@@ -72,14 +72,10 @@ function fixture(port: BrowserPort = { frame: async () => ({ bytes: jpeg, width:
     const headers = new Headers({ host: options.host ?? '127.0.0.1:3199', 'content-type': 'application/json', ...options.headers })
     if (options.origin !== null) headers.set('origin', options.origin ?? origin)
     if (options.cap) headers.set(dotAuthCapabilityHeader, options.cap)
-    const method = options.method ?? (operation === 'start' || operation === 'input' || operation === 'cancel' ? 'POST' : 'GET')
-    return route.fetch(
-      new Request(`${origin}${route.path}${options.suffix ?? ''}`, {
-        method,
-        headers,
-        ...(options.raw !== undefined ? { body: options.raw } : options.body ? { body: JSON.stringify(options.body) } : {}),
-      }),
-    )
+    const method = options.method ?? 'POST'
+    const init: RequestInit = { method, headers }
+    if (method !== 'GET' && method !== 'HEAD') init.body = options.raw ?? JSON.stringify(options.body ?? {})
+    return route.fetch(new Request(`${origin}${route.path}${options.suffix ?? ''}`, init))
   }
   async function start() {
     const response = await send('start', { body: { acceptRisks: true } })
@@ -108,9 +104,9 @@ afterEach(async () => {
 it('registers exactly the frozen routes through the native public streaming fetch seam and disposes them', async () => {
   const f = fixture()
   expect([...f.routes.keys()]).toEqual(Object.values(dotAuthRoutes))
-  for (const [path, route] of f.routes) {
+  for (const route of f.routes.values()) {
     expect(route.requestBody).toBe('streaming')
-    expect(route.methods).toEqual([path.endsWith('/start') || path.endsWith('/input') || path.endsWith('/cancel') ? 'POST' : 'GET'])
+    expect(route.methods).toEqual(['POST'])
   }
   const start = await f.start()
   await f.dispose()
@@ -119,6 +115,28 @@ it('registers exactly the frozen routes through the native public streaming fetc
   expect(() => f.manager.status(start.capability)).toThrow()
   await f.dispose()
   expect(f.removals).toHaveBeenCalledTimes(5)
+})
+
+it('requires bounded strict empty JSON on status/frame and rejects GET without capturing', async () => {
+  const port: BrowserPort = {
+    frame: vi.fn(async () => ({ bytes: jpeg, width: 640, height: 480 })),
+    input: async () => {},
+    close: async () => {},
+  }
+  const f = fixture(port)
+  const start = await f.start()
+  for (const operation of ['status', 'frame'] as const) {
+    for (const raw of [JSON.stringify({ command: canary }), '[]', 'null', canary, '', 'x'.repeat(8193)]) {
+      const response = await f.send(operation, { cap: start.capability, raw })
+      expect(response.status).toBe(400)
+      expect(await response.text()).toBe('{"error":"invalid-request"}')
+    }
+    expect((await f.send(operation, { cap: start.capability, method: 'GET' })).status).toBe(400)
+  }
+  expect(port.frame).not.toHaveBeenCalled()
+  expect((await f.send('status', { cap: start.capability, body: {} })).status).toBe(200)
+  expect((await f.send('frame', { cap: start.capability, body: {} })).status).toBe(200)
+  expect(port.frame).toHaveBeenCalledTimes(1)
 })
 
 it('requires configured exact external origin even when native bridge Request URL uses dsh.internal', async () => {
@@ -160,7 +178,7 @@ it('requires native browser admission, rejects API-owner and forged-cookie reque
   expect(f.admit).toHaveBeenCalled()
 })
 
-it('requires same-origin CSRF for start and mutations, Host agreement and native trust, not cookie names', async () => {
+it('requires same-origin CSRF for every POST, Host agreement and native trust, not cookie names', async () => {
   const f = fixture()
   for (const options of [
     { origin: null },
@@ -173,12 +191,11 @@ it('requires same-origin CSRF for start and mutations, Host agreement and native
     expect((await f.send('start', { body: { acceptRisks: true }, ...options })).status).toBe(403)
   }
   const start = await f.start()
-  for (const operation of ['input', 'cancel'] as const) {
+  for (const operation of ['status', 'frame', 'input', 'cancel'] as const) {
     expect((await f.send(operation, { cap: start.capability, body: {}, origin: null })).status).toBe(403)
     expect((await f.send(operation, { cap: start.capability, body: {}, origin: 'https://evil.invalid' })).status).toBe(403)
   }
-  expect((await f.send('status', { cap: start.capability, origin: null })).status).toBe(200)
-  expect((await f.send('status', { cap: start.capability, origin: 'https://evil.invalid' })).status).toBe(403)
+  expect((await f.send('status', { cap: start.capability })).status).toBe(200)
 })
 
 it('returns capability only from browser start, rejects queries and requires header possession on every private route', async () => {
@@ -274,11 +291,23 @@ it('revokes on cancel and rejects stale/cross-attempt data, double start and lat
   const pending = new Promise<{ bytes: Uint8Array; width: number; height: number }>(done => {
     resolve = done
   })
-  const port: BrowserPort = { frame: () => pending, input: async () => {}, close: vi.fn(async () => {}) }
+  let captureStarted!: () => void
+  const capture = new Promise<void>(done => {
+    captureStarted = done
+  })
+  const port: BrowserPort = {
+    frame: () => {
+      captureStarted()
+      return pending
+    },
+    input: async () => {},
+    close: vi.fn(async () => {}),
+  }
   const f = fixture(port)
   const start = await f.start()
   expect((await f.send('start', { body: { acceptRisks: true } })).status).toBe(409)
   const late = f.send('frame', { cap: start.capability })
+  await capture
   const cancelled = await f.send('cancel', { cap: start.capability, body: {} })
   expect(cancelled.status).toBe(200)
   expect(await cancelled.text()).not.toContain(start.capability)

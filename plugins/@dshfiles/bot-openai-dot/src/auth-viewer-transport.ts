@@ -6,7 +6,7 @@ import {
   authStartResultSchema,
   authStartSchema,
   authInputRequestSchema,
-  authCancelSchema,
+  authEmptyRequestSchema,
   authFrameMaxBytes,
   dotAuthCapabilityHeader,
   dotAuthRoutes,
@@ -34,7 +34,7 @@ export interface AuthFetchConfiguration {
   readonly pageOrigin: string
   readonly fetch: typeof globalThis.fetch
 }
-type AuthWireBody = AuthStartInput | AuthInputRequest | ReturnType<typeof authCancelSchema.parse>
+type AuthWireBody = AuthStartInput | AuthInputRequest | ReturnType<typeof authEmptyRequestSchema.parse>
 const JSON_LIMIT = 8192
 function refused(): Error {
   return new Error('The private browser request could not be completed.')
@@ -126,18 +126,21 @@ export function createAuthFetchTransport(configuration: AuthFetchConfiguration):
   const authorize = (id: string, capability: string) => {
     if (!binding || binding.id !== id || binding.capability !== capability) throw refused()
   }
-  const request = async (operation: keyof typeof dotAuthRoutes, signal: AbortSignal, body?: AuthWireBody, capability?: string): Promise<Response> => {
+  const request = async (operation: keyof typeof dotAuthRoutes, signal: AbortSignal, body: AuthWireBody, capability?: string): Promise<Response> => {
     abortCheck(signal)
     const headers = new Headers({ Accept: operation === 'frame' ? 'image/jpeg' : 'application/json', 'Cache-Control': 'no-store' })
     if (capability !== undefined) {
       if (!authStartResultSchema.shape.capability.safeParse(capability).success) throw refused()
       headers.set(dotAuthCapabilityHeader, capability)
     }
-    const encoded = body === undefined ? undefined : JSON.stringify(body)
-    if (encoded !== undefined && new TextEncoder().encode(encoded).byteLength > JSON_LIMIT) throw refused()
-    if (encoded !== undefined) headers.set('Content-Type', 'application/json')
+    const encoded = JSON.stringify(body)
+    if (new TextEncoder().encode(encoded).byteLength > JSON_LIMIT) throw refused()
+    headers.set('Content-Type', 'application/json')
+    // Every operation is POST: the native streaming bridge supplies a body even
+    // for status/frame, which the platform Request constructor forbids with GET.
     const init: RequestInit = {
-      method: encoded === undefined ? 'GET' : 'POST',
+      method: 'POST',
+      body: encoded,
       headers,
       signal,
       mode: 'same-origin',
@@ -146,7 +149,6 @@ export function createAuthFetchTransport(configuration: AuthFetchConfiguration):
       cache: 'no-store',
       referrerPolicy: 'no-referrer',
     }
-    if (encoded !== undefined) init.body = encoded
     const response = await nativeFetch(`${base}${dotAuthRoutes[operation]}`, init)
     if (signal.aborted) {
       void response.body?.cancel().catch(() => {})
@@ -167,7 +169,7 @@ export function createAuthFetchTransport(configuration: AuthFetchConfiguration):
     operation: keyof typeof dotAuthRoutes,
     schema: ZodType<T>,
     signal: AbortSignal,
-    body?: AuthWireBody,
+    body: AuthWireBody,
     capability?: string,
   ): Promise<T> => {
     const response = await request(operation, signal, body, capability)
@@ -202,7 +204,7 @@ export function createAuthFetchTransport(configuration: AuthFetchConfiguration):
     status: (id, cap, signal) =>
       protect(async () => {
         authorize(id, cap)
-        return bound(id, await json('status', authAttemptSnapshotSchema, signal, undefined, cap))
+        return bound(id, await json('status', authAttemptSnapshotSchema, signal, {}, cap))
       }),
     cancel: (id, cap, signal) =>
       protect(async () => {
@@ -223,7 +225,7 @@ export function createAuthFetchTransport(configuration: AuthFetchConfiguration):
     frame: (id, cap, signal) =>
       protect(async () => {
         authorize(id, cap)
-        const response = await request('frame', signal, undefined, cap)
+        const response = await request('frame', signal, {}, cap)
         const bytes = await boundedBytes(response, authFrameMaxBytes, signal)
         const size = jpegSize(bytes)
         if (String(size.width) !== response.headers.get('x-dot-auth-width') || String(size.height) !== response.headers.get('x-dot-auth-height'))

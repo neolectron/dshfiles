@@ -64,7 +64,7 @@ export const authInputRequestSchema = z
   })
   .strict()
 export type AuthInputRequest = z.infer<typeof authInputRequestSchema>
-export const authCancelSchema = z.object({}).strict()
+export const authEmptyRequestSchema = z.object({}).strict()
 
 export const authAttemptSnapshotSchema = z
   .object({

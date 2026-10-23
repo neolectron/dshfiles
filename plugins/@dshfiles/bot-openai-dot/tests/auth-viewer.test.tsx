@@ -218,16 +218,19 @@ async function begun(basePath = '/') {
 const jpeg = () => new Uint8Array([255, 216, 255, 192, 0, 17, 8, 1, 144, 3, 32, 3, 1, 17, 0, 2, 17, 1, 3, 17, 1, 255, 217])
 
 describe('explicit-deployment private native Fetch adapter fixture', () => {
-  it.each(['/', '/mounted/'])('uses only fixed routes beneath %s with capability headers and private fetch policy', async basePath => {
+  it.each(['/', '/mounted/'])('POSTs bounded JSON for all five fixed routes beneath %s with capability headers and private fetch policy', async basePath => {
     const { fetch, transport, signal } = await begun(basePath)
     await transport.status(ID, FETCH_CAP, signal)
+    fetch.mockResolvedValueOnce(new Response(jpeg(), { headers: { 'Content-Type': 'image/jpeg', 'X-Dot-Auth-Width': '800', 'X-Dot-Auth-Height': '400' } }))
+    await transport.frame(ID, FETCH_CAP, signal)
     await transport.input(ID, FETCH_CAP, { attemptId: ID, sequence: 1, input: { kind: 'text', text: 'fixture-input' } }, signal)
     await transport.cancel(ID, FETCH_CAP, signal)
     const prefix = `${ORIGIN}${basePath.slice(0, -1)}/api/dshfiles/dot-auth/`
-    expect(fetch.mock.calls.map(([url]) => url)).toEqual(['start', 'status', 'input', 'cancel'].map(operation => `${prefix}${operation}`))
+    expect(fetch.mock.calls.map(([url]) => url)).toEqual(['start', 'status', 'frame', 'input', 'cancel'].map(operation => `${prefix}${operation}`))
     for (const [url, init] of fetch.mock.calls) {
       expect(String(url)).not.toContain(FETCH_CAP)
       expect(init).toMatchObject({
+        method: 'POST',
         credentials: 'same-origin',
         redirect: 'error',
         cache: 'no-store',
@@ -237,12 +240,17 @@ describe('explicit-deployment private native Fetch adapter fixture', () => {
       })
       const headers = new Headers(init?.headers)
       expect(headers.get('Cache-Control')).toBe('no-store')
+      expect(headers.get('Content-Type')).toBe('application/json')
+      expect(init?.body).toBeTypeOf('string')
+      expect(new TextEncoder().encode(String(init?.body)).byteLength).toBeLessThanOrEqual(8192)
       expect(headers.get('Origin')).toBeNull()
       expect(headers.get('X-Dot-Auth-Capability')).toBe(String(url).endsWith('/start') ? null : FETCH_CAP)
     }
     expect(fetch.mock.calls[0]?.[1]?.body).toBe('{"acceptRisks":true}')
-    expect(fetch.mock.calls[1]?.[1]?.method).toBe('GET')
-    expect(fetch.mock.calls[3]?.[1]?.body).toBe('{}')
+    expect(fetch.mock.calls[1]?.[1]?.body).toBe('{}')
+    expect(fetch.mock.calls[2]?.[1]?.body).toBe('{}')
+    expect(fetch.mock.calls[3]?.[1]?.body).toContain('"attemptId"')
+    expect(fetch.mock.calls[4]?.[1]?.body).toBe('{}')
   })
   it.each(['', 'mount/', '/mount', '//', '//evil.test/', '/a//b/', '/./', '/../', '/a/../b/', '/%2f/', '/%2e%2e/', '/a\\b/', '/a/?x=1', '/a/#secret'])(
     'rejects noncanonical mount %j before fetch',

@@ -3,7 +3,7 @@ import type { ConnectionFetchRoute, HostConnectionHandle } from '@deepseek-ai/ds
 import { JsonText } from '@dshfiles/dshx/api'
 import { AuthAttemptError } from './auth-attempt.js'
 import type { AuthAttemptErrorCode, AuthAttemptManager } from './auth-attempt.js'
-import { authCancelSchema, authInputRequestSchema, authStartSchema, dotAuthCapabilityHeader, dotAuthRoutes } from './auth-protocol.js'
+import { authEmptyRequestSchema, authInputRequestSchema, authStartSchema, dotAuthCapabilityHeader, dotAuthRoutes } from './auth-protocol.js'
 import type { AuthAttemptSnapshot, AuthStartResult } from './auth-protocol.js'
 
 const maxBodyBytes = 8 * 1024
@@ -87,10 +87,11 @@ export function registerDotAuthRoutes(
   const disposers: Array<() => Promise<void>> = []
   let disposed = false
   for (const [operation, path] of Object.entries(dotAuthRoutes)) {
-    const mutation = operation === 'start' || operation === 'input' || operation === 'cancel'
     const route: ConnectionFetchRoute = {
       path,
-      methods: [mutation ? 'POST' : 'GET'],
+      // The native streaming bridge always attaches a body, including empty reads;
+      // Fetch Request forbids bodies on GET/HEAD. Keep every bounded operation POST.
+      methods: ['POST'],
       // Native buffered mode has a much larger aggregate cap. Own the narrow cap here.
       requestBody: 'streaming',
       async fetch(request) {
@@ -104,18 +105,24 @@ export function registerDotAuthRoutes(
           const url = new URL(request.url)
           if (request.headers.get('host')?.toLowerCase() !== browserUrl.host.toLowerCase()) return refused(403)
           const origin = request.headers.get('origin')
-          if ((mutation || origin !== null) && origin !== browserUrl.origin) return refused(403)
+          if (origin !== browserUrl.origin) return refused(403)
           const site = request.headers.get('sec-fetch-site')
           if (site !== null && site !== 'same-origin') return refused(403)
-          if (url.pathname !== path || url.search || url.hash || request.method !== (mutation ? 'POST' : 'GET')) return refused(400, 'invalid-request')
+          if (url.pathname !== path || url.search || url.hash || request.method !== 'POST') return refused(400, 'invalid-request')
           if (operation === 'start') {
             const parsed = JsonText.parse(await bodyText(request), authStartSchema)
             return json(manager.start(parsed))
           }
           const capability = request.headers.get(dotAuthCapabilityHeader) ?? ''
           // Authorize before reading any private operation's request body.
-          const snapshot = manager.status(capability)
-          if (operation === 'status') return json(snapshot)
+          manager.status(capability)
+          if (operation === 'input') {
+            const parsed = JsonText.parse(await bodyText(request), authInputRequestSchema)
+            await manager.input(capability, parsed, request.signal)
+            return json(manager.status(capability))
+          }
+          JsonText.parse(await bodyText(request), authEmptyRequestSchema)
+          if (operation === 'status') return json(manager.status(capability))
           if (operation === 'frame') {
             const frame = await manager.frame(capability, request.signal)
             // Recheck after the await boundary before publishing private bytes.
@@ -130,12 +137,6 @@ export function registerDotAuthRoutes(
               },
             })
           }
-          if (operation === 'input') {
-            const parsed = JsonText.parse(await bodyText(request), authInputRequestSchema)
-            await manager.input(capability, parsed, request.signal)
-            return json(manager.status(capability))
-          }
-          JsonText.parse(await bodyText(request), authCancelSchema)
           return json(await manager.cancel(capability))
         } catch (error: unknown) {
           if (error instanceof AuthAttemptError) return refused(errorStatus[error.code], error.code)
