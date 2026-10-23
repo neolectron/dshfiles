@@ -1,0 +1,44 @@
+{
+  "scope": "Synthetic existing-source AuthViewer and createAuthFetchTransport in a real isolated native DSH GUI, before wire-method fix",
+  "browser": "Google Chrome 155.0.8059.79 override",
+  "nativeRuntime": "0.2.1-rc.2",
+  "node": "22.23.3",
+  "verified": [
+    "Public dshx Host/client builds and Host import check",
+    "Temporary fixture package via additionalBundleIds plus seedHome-only package link",
+    "All active native GUI boot and sidebar/main AuthViewer rendering",
+    "Consent unchecked, Start disabled, BrowserPort opens=0 before consent",
+    "Start POST succeeds and opens exactly one synthetic BrowserPort",
+    "First status GET returns HTTP 400 before native route handler entry",
+    "Viewer fails without status retry and sends one cancellation POST",
+    "Cancellation closes the synthetic BrowserPort"
+  ],
+  "network": {
+    "start": 1,
+    "status": 1,
+    "frame": 0,
+    "input": 0,
+    "cancel": 1,
+    "malformed": 0,
+    "protected": 2,
+    "noStore": 3,
+    "failures": 1,
+    "lastFailureCode": 400,
+    "lastFailureOperation": "status"
+  },
+  "syntheticState": {
+    "opens": 1,
+    "closes": 1,
+    "frames": 0,
+    "pointers": 0,
+    "textEvents": 0,
+    "textUnits": 0,
+    "keys": 0,
+    "statusFailures": 0,
+    "statusCalls": 1,
+    "statusEntries": 0
+  },
+  "cause": "Parent confirmed installed native bridge builds a GET Request with a body in streaming mode, causing a TypeError before the handler. Production owner is switching private fixed-route operations to POST while retaining streaming bounds.",
+  "notProvedByThisReproduction": ["JPEG decode", "coordinate mapping", "trusted keyboard/IME input", "mounted deployment", "provider sign-in"],
+  "privacy": "No provider, account, credentials, vault, live profile, capabilities, input text, request bodies or private URLs retained. Counters and fixed failure codes only."
+}
