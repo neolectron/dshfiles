@@ -18,7 +18,7 @@ import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { readScenarioReceipts, replayableScenarioIds, writeScenarioKeys } from '../e2e/support/scenario-cache.mjs'
+import { readScenarioReceipts, replayableScenarioIds, scenarioKey, writeScenarioKeys } from '../e2e/support/scenario-cache.mjs'
 import { distDigestFile, planBrowserTasks } from './browser-tasks.mjs'
 
 const dshxRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -35,7 +35,8 @@ if (features === undefined || features.length === 0)
 
 /**
  * The scenarios this task would run, keyed the way their receipts are stored: what their own steps say plus the built
- * JavaScript of every bundle those steps reach. A scenario whose key did not move is replayed, not run.
+ * JavaScript of every bundle those steps reach, plus the root runner's external-tool version evidence. A scenario
+ * whose key did not move is replayed, not run.
  */
 const scenarioKeysForTask = async () => {
   const scenarios = (owner.scenarios ?? []).filter(scenario => features.includes(scenario.feature))
@@ -49,7 +50,7 @@ const scenarioKeysForTask = async () => {
           }),
         ),
       )
-      return [scenario.id, { id: scenario.id, steps: scenario.stepsHash, digests }]
+      return [scenario.id, scenarioKey({ id: scenario.id, steps: scenario.stepsHash, digests, toolVersions: process.env.DSHX_TOOL_VERSIONS })]
     }),
   )
   return Object.fromEntries(entries)

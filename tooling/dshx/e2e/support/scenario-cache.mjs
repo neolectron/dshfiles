@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { z } from 'zod'
@@ -8,7 +9,8 @@ import { z } from 'zod'
  * Turbo already replays a whole owner task whose inputs did not move, but a task covers every scenario its owner's
  * feature files hold, so one bundle that a third of those scenarios never drive still re-runs all of them. This store
  * keys each scenario on what its *own* steps say (`steps`) and on the built JavaScript of every bundle those steps
- * reach (`digests`, the same `.turbo/browser-dist` digests the task itself keys on). Both are content, so a rebase
+ * reach (`digests`, the same `.turbo/browser-dist` digests the task itself keys on). The steps hash also includes the
+ * root runner's external-tool version evidence, so a browser/jj change cannot replay stale receipts. A rebase
  * that leaves the files alone keeps its receipts, and a formatting-only edit that keeps a bundle byte-identical keeps
  * them too.
  *
@@ -38,6 +40,18 @@ export const scenarioIdOfTest = testInfo => {
   }
   return undefined
 }
+
+/** Both cache layers must agree on external binaries; absent evidence retains legacy direct-run semantics. */
+export const scenarioKey = ({ id, steps, digests, toolVersions = '' }) => ({
+  id,
+  steps:
+    toolVersions === ''
+      ? steps
+      : createHash('sha256')
+          .update(JSON.stringify([steps, toolVersions]))
+          .digest('hex'),
+  digests,
+})
 
 const scenarioKeySchema = z.object({
   id: z.string(),

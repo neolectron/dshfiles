@@ -11,6 +11,7 @@ import {
   replayableScenarioIds,
   scenarioCacheFiles,
   scenarioIdOf,
+  scenarioKey,
   writeScenarioKeys,
 } from './scenario-cache.mjs'
 
@@ -29,6 +30,29 @@ test('a receipt is fresh only for the same steps against the same built JavaScri
   assert.equal(receiptIsFresh(current, key('a.one', 'hash-1', { '@dshfiles/alpha': 'dist-2' })), false, 'changed dist')
   assert.equal(receiptIsFresh(current, key('a.one', 'hash-1', {})), false, 'a bundle the scenario reaches was not proven')
   assert.equal(receiptIsFresh(current, key('a.one', 'hash-1', { '@dshfiles/alpha': 'dist-1', '@dshfiles/beta': 'dist-1' })), false, 'an extra bundle')
+})
+
+test('scenario receipts cannot replay across different browser or jj version evidence', () => {
+  const input = { id: 'a.one', steps: 'same-steps', digests: { alpha: 'same-dist' } }
+  const original = scenarioKey({ ...input, toolVersions: 'jj 0.35\nchromium override "/opt/chrome": Chrome 155' })
+  assert.equal(receiptIsFresh(scenarioKey({ ...input, toolVersions: 'jj 0.35\nchromium override "/opt/chrome": Chrome 155' }), original), true)
+  assert.equal(
+    receiptIsFresh(scenarioKey({ ...input, toolVersions: 'jj 0.35\nchromium override "/opt/chrome": Chrome 156' }), original),
+    false,
+    'changed browser',
+  )
+  assert.equal(receiptIsFresh(scenarioKey({ ...input, toolVersions: 'jj 0.36\nchromium override "/opt/chrome": Chrome 155' }), original), false, 'changed jj')
+  assert.deepEqual(
+    replayableScenarioIds({ 'a.one': scenarioKey({ ...input, toolVersions: 'jj 0.35\nchromium override "/opt/chrome": Chrome 156' }) }, { 'a.one': original }),
+    [],
+  )
+})
+
+test('missing tool-version evidence preserves direct-run keys but cannot reuse an evidenced receipt', () => {
+  const input = { id: 'a.one', steps: 'same-steps', digests: { alpha: 'same-dist' } }
+  assert.deepEqual(scenarioKey(input), input)
+  assert.deepEqual(scenarioKey({ ...input, toolVersions: '' }), input)
+  assert.equal(receiptIsFresh(scenarioKey(input), scenarioKey({ ...input, toolVersions: 'jj 0.35' })), false)
 })
 
 test('replayableScenarioIds selects per scenario, not per task', () => {

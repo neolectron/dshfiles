@@ -1,6 +1,7 @@
 import { defineConfig } from '@playwright/test'
 import { defineBddProject } from 'playwright-bdd'
 import { E2E_VIEWPORT } from './e2e/support/evidence.js'
+import { BrowserExecutable } from './packages/dshx/src/project/browser-executable.js'
 
 /**
  * Behavior E2E for the DSH Web UI.
@@ -42,6 +43,7 @@ export default defineConfig({
     actionTimeout: 15_000,
     navigationTimeout: 30_000,
     serviceWorkers: 'block',
+    launchOptions: BrowserExecutable.options(process.env.DSHX_E2E_CHROMIUM_EXECUTABLE),
     trace: 'off',
     screenshot: 'only-on-failure',
     viewport: E2E_VIEWPORT,

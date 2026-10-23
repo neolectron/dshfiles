@@ -7,6 +7,7 @@ const lintRoots = ['tooling/dshx/packages', 'plugins', 'scripts', 'apps/desktop/
 // Deliberate public re-export boundaries, exempt from the ast-grep forwarding rules.
 const astGrepBoundaries = [
   'tooling/dshx/packages/dshx/client/index.d.ts',
+  'tooling/dshx/packages/dshx/src/api/index.ts',
   'plugins/@dshfiles/plugin-ui/src/icons.ts',
   'plugins/@dshfiles/input-trigger/src/client/index.ts',
 ]

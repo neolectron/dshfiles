@@ -2,6 +2,10 @@ id: no-direct-json-parse
 language: TypeScript
 message: Decode untrusted or transport JSON through the repository's validated parser instead of calling JSON.parse directly.
 severity: error
+# Owned exception: this exact public boundary immediately validates decoded data through a mandatory schema.
+# No other rule or path is exempt. Keep this intentional local delta when refreshing the vendored rule.
+ignores:
+  - tooling/dshx/packages/dshx/src/api/json-text.ts
 rule:
   pattern: JSON.parse($INPUT)
 ---

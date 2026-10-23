@@ -32,6 +32,7 @@ const HOST_SDK_PATH = fileURLToPath(new URL('../../sdk/host.js', import.meta.url
 const API_DEFINE_PATH = fileURLToPath(new URL('../../api/define.js', import.meta.url))
 const API_HOST_CLIENT_PATH = fileURLToPath(new URL('../../api/host-client.js', import.meta.url))
 const API_COMMON_PATH = fileURLToPath(new URL('../../api/common.js', import.meta.url))
+const API_JSON_TEXT_PATH = fileURLToPath(new URL('../../api/json-text.js', import.meta.url))
 const SETTINGS_DEFINE_PATH = fileURLToPath(new URL('../../settings/define.js', import.meta.url))
 const COMMUNICATION_RUNTIME_PATH = fileURLToPath(new URL('../../communication/index.js', import.meta.url))
 const COMMUNICATION_TYPES_PATH = fileURLToPath(new URL('../../communication/types.js', import.meta.url))
@@ -124,6 +125,7 @@ function hostEntryPlugin(paths: Awaited<ReturnType<typeof resolveOptions>>, opti
           'export const dshxRegistryApi = ApiDefinitionModel.registryApi',
           'export const method = ApiDefinitionModel.method',
           `export { isApiError, isApiOwnerMissing, PluginApiError } from ${JSON.stringify(API_COMMON_PATH)}`,
+          `export { JsonText } from ${JSON.stringify(API_JSON_TEXT_PATH)}`,
           '',
         ].join('\n')
       }

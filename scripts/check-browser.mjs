@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url'
 import { resolveBrowserSelection, writeDistDigests } from '../tooling/dshx/scripts/browser-tasks.mjs'
 import { reapRecordedScratchProcesses, scratchLedgerPath } from '../tooling/dshx/scripts/reap-scratch-processes.mjs'
 import { turboCacheDir } from './turbo-cache.mjs'
+import { BrowserExecutable } from '../tooling/dshx/packages/dshx/src/project/browser-executable.ts'
 
 const workspaceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const tasks = { e2e: 'test:e2e', smoke: 'test:e2e:smoke', boot: 'test:boot' }
@@ -85,7 +86,11 @@ if (reaped.length > 0) {
 const { filters, buildTargets } = await resolveBrowserSelection({ names, mode })
 
 const jj = spawnSync('jj', ['--version'], { encoding: 'utf8' })
-const toolVersions = jj.status === 0 ? jj.stdout.trim() : 'jj unavailable'
+const browserExecutable = BrowserExecutable.path(process.env.DSHX_E2E_CHROMIUM_EXECUTABLE)
+const toolVersions = [
+  jj.status === 0 ? jj.stdout.trim() : 'jj unavailable',
+  ...(browserExecutable === undefined ? [] : [BrowserExecutable.versionEvidence(browserExecutable)]),
+].join('\n')
 
 const turboCache = turboCacheDir()
 console.log(

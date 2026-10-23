@@ -6,6 +6,12 @@
 
 **React Hooks: `@dshfiles/dshx/client`**
 
+## Validated JSON text
+
+`JsonText.parse(text, zodSchema)` from `@dshfiles/dshx/api` decodes JSON text and runs its required zod schema (including transforms) as one public boundary. The caller receives only validated output. Malformed JSON, schema failures and thrown refinement/transform errors all produce the fixed error `JSON text did not match the required schema.` without payloads, validation diagnostics or causes. Callers retain ownership of input byte limits, deadlines and domain-specific error classification.
+
+The OpenAI Dot Host adapter forced this SDK addition: JWT binding claims, bounded HTTP responses and opaque checkpoints needed the repository's schema-validated text decoder, but no shared one existed. Prefer this boundary over raw native parsing or a local parser alias. The native decode is approved only in `src/api/json-text.ts`; the AST rule's exact-file exception leaves every other path and rule enforced. A new public API export also needs matching Host and Client virtual-facade exports in the owned SDK compiler; the `json-text-build` regressions prove the supported bare import bundles in both runtimes.
+
 ## Define a contract
 
 ```ts

@@ -5,6 +5,7 @@ import { spawnOwnedProcess, stopOwnedProcess } from './owned-process.js'
 import { compositionFailures, readProfileComposition } from './profile-composition.js'
 import { ScratchProfileRuntime } from './scratch-profile.js'
 import { StartupDialogs } from './startup-dialogs.js'
+import { BrowserExecutable } from './browser-executable.js'
 import type { BrowserBootEvidence, SlotRenderFailure } from './browser-boot.js'
 export { compositionFailures }
 
@@ -244,9 +245,14 @@ export const checkClientBoot = async (options: ClientBootCheckOptions): Promise<
         if (launchUrl !== undefined) {
           await waitForHostResponse(launchUrl)
           try {
-            const { chromium, firefox, webkit } = (await import('playwright')) as typeof import('playwright')
+            const { chromium, firefox, webkit } = await import('playwright')
             const engine = { chromium, firefox, webkit }[options.browserName ?? 'chromium']
-            const browser = await engine.launch({ headless: true })
+            const launchOptions: import('playwright').LaunchOptions = { headless: true }
+            if ((options.browserName ?? 'chromium') === 'chromium') {
+              const executablePath = BrowserExecutable.path(process.env.DSHX_E2E_CHROMIUM_EXECUTABLE)
+              if (executablePath !== undefined) launchOptions.executablePath = executablePath
+            }
+            const browser = await engine.launch(launchOptions)
             try {
               const page = await browser.newPage()
               // Attach before the navigation: a Slot that abdicates logs its crash once, and a reader attached after the
