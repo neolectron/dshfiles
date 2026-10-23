@@ -36,7 +36,7 @@ The provider conversation remains canonical. Since-link cache is not a claim to 
 
 - Credential fields are canonical `secret:ALIAS`/`secret:ALIAS@env` references, resolved on the Host by credential-port. No raw credential fields, browser storage, log payload tracing or automatic browser-profile extraction.
 - An adapter's risks must be explicitly accepted. Dot credentials are broad ChatGPT authority, **not a provider-enforced Dot-only grant**.
-- The Dot adapter does not implement standard Sign in with ChatGPT: that public permission does not grant existing conversation/memory access. Credentials must already be stored through the user's vault workflow. A safer browser-assisted credential-linking experience is separate future work, not silently simulated by a token form.
+- The Dot adapter does not implement standard Sign in with ChatGPT: [its public scopes do not grant conversation access](https://developers.openai.com/siwc/quickstart.md). Credentials currently must already be stored through the user's vault workflow. Secure user-assisted sign-in/provisioning is unfinished end-to-end work, tracked in the plan; a reference-only form is not a finished sign-in experience.
 - Dot refresh remains memory-only; it does not overwrite the user's vault. Invalid or rotated references require the user to update the vault.
 - Public APIs/tools expose sanitized connection state; reading private conversation text is a separate user-authorized operation. Sending DSH context externally is never automatic.
 - Every authenticated browser shares DSH's owner principal. This is **single-owner integration**, not per-human/tenant isolation. Do not expose a personal Dot to a shared-user instance under a false isolation promise.
@@ -58,7 +58,7 @@ The checked-in web seed includes both bundles after isolated verification; with 
 
 The [Bots feature catalog](../plugins/@dshfiles/bots/dshx.features.json) and [journeys](../tooling/dshx/e2e/features/bots.feature) exercise the real Host/API/browser with a scratch-only synthetic adapter. Dot protocol fixtures use synthetic credentials and scripted HTTP responses, including failure and identity cases; they do not authenticate a real account.
 
-Real account/workspace compatibility remains unverified until the user explicitly links their own Dot. No fixture test proves that OpenAI currently accepts this private protocol for that account. The [remaining promotion gates](../plans/durable-bots/README.md) stay open until the work is integrated and the user chooses deployment/linking.
+Real account/workspace compatibility remains unverified until the user explicitly links their own Dot. No fixture test proves that OpenAI currently accepts this private protocol for that account. The [end-to-end completion plan](../plans/durable-bots/README.md) stays open for secure onboarding and credential lifecycle, safe deployment into the actual installation, and authorized real-account proof. Version one is a fixture-verified foundation, not a completed live Dot integration.
 
 ### Focused verification
 
