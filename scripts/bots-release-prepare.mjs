@@ -14,7 +14,7 @@ import { BotsReleaseVerification } from './bots-release-verify.mjs'
 const { verifyArtifacts } = BotsReleaseVerification
 
 const repositoryRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const packages = ['bots', 'bot-openai-dot', 'ui-styles']
+const packages = ['bots', 'secret-catalog', 'bot-openai-dot', 'ui-styles']
 const markerName = '.bots-release-prepare.json'
 const forbidden = new Set(['local-state', 'browser', 'accounts', 'node_modules', 'profiles', '.git', '.ssh', '.dsh'])
 const privateFiles = new Set(['accounts.json', 'ai-accounts.json', 'credentials.json', 'secrets.json', 'cookies.json', 'storage-state.json', 'auth.json'])
@@ -261,6 +261,10 @@ async function dependencyLinks(roots) {
   const targets = {
     '@deepseek-ai': join(runtime, 'node_modules/@deepseek-ai'),
     '@dshfiles/bots': join(output, 'packages/@dshfiles/bots'),
+    '@dshfiles/secret-catalog': join(output, 'packages/@dshfiles/secret-catalog'),
+    '@dshfiles/backlog': join(source, 'plugins/@dshfiles/backlog'),
+    '@dshfiles/jj-integration': join(source, 'plugins/@dshfiles/jj-integration'),
+    '@dshfiles/project-folder-picker': join(source, 'plugins/@dshfiles/project-folder-picker'),
     '@dshfiles/dshx': join(source, 'tooling/dshx/packages/dshx'),
     '@dshfiles/plugin-ui': join(source, 'plugins/@dshfiles/plugin-ui'),
     '@dshfiles/credential-port': join(source, 'plugins/@dshfiles/credential-port'),
@@ -271,9 +275,14 @@ async function dependencyLinks(roots) {
   }
   const links = []
   for (const [name, target] of Object.entries(targets)) {
-    links.push({ path: join(output, 'node_modules', name), target, realTarget: name === '@dshfiles/bots' ? target : await realpath(target) })
+    links.push({ path: join(output, 'node_modules', name), target, realTarget: contains(output, target) ? target : await realpath(target) })
   }
   return links
+}
+
+// Candidate-owned packages are covered by the artifact inventory, never the external retention graph.
+function retainedTargets(links, output) {
+  return links.filter(link => link.path !== join(output, 'node_modules/@deepseek-ai') && !contains(output, link.realTarget)).map(link => link.realTarget)
 }
 
 async function save(output, path, data) {
@@ -406,15 +415,7 @@ async function check(roots) {
       .filter(name => !name.startsWith('.'))
       .map(name => realpath(join(roots.runtimeRoot, 'node_modules/@deepseek-ai', name))),
   )
-  const retained = await dependencyTrees(
-    [
-      ...expectedLinks
-        .filter(link => !['@deepseek-ai', '@dshfiles/bots'].some(name => link.path === join(output, 'node_modules', name)))
-        .map(link => link.realTarget),
-      ...nativeRoots,
-    ],
-    roots.sourceRoot,
-  )
+  const retained = await dependencyTrees([...retainedTargets(expectedLinks, output), ...nativeRoots], roots.sourceRoot)
   assert.deepEqual(retained, manifest.retainedTrees, 'Retained dependency graph or content changed')
   for (const link of manifest.links) {
     assert.equal(await readlink(link.path), link.target, `Link retargeted: ${link.path}`)
@@ -469,15 +470,7 @@ async function prepare(options) {
       .filter(name => !name.startsWith('.'))
       .map(name => realpath(join(roots.runtimeRoot, 'node_modules/@deepseek-ai', name))),
   )
-  const retainedTrees = await dependencyTrees(
-    [
-      ...links
-        .filter(link => !['@deepseek-ai', '@dshfiles/bots'].some(name => link.path === join(roots.output, 'node_modules', name)))
-        .map(link => link.realTarget),
-      ...nativeRoots,
-    ],
-    roots.sourceRoot,
-  )
+  const retainedTrees = await dependencyTrees([...retainedTargets(links, roots.output), ...nativeRoots], roots.sourceRoot)
   const inputs = await collectInputs(roots, plan)
   const runtimeVersion = JsonText.parse(
     await readFile(join(roots.runtimeRoot, 'node_modules/@deepseek-ai/dsh/package.json'), 'utf8'),
@@ -586,6 +579,7 @@ export class BotsReleasePreparation {
   static assertEmptyOutput = assertEmptyOutput
   static sourcePlan = sourcePlan
   static treeInventory = treeInventory
+  static retainedTargets = retainedTargets
   static prepare = prepare
   static check = check
   static parseArgs = parseArgs

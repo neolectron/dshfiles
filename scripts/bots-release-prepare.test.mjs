@@ -10,6 +10,19 @@ import { BotsReleaseVerification } from './bots-release-verify.mjs'
 const { assertEmptyOutput, check, contains, parseArgs, prepare, prospectiveRealpath, sourcePlan, treeInventory, validateRoots } = BotsReleasePreparation
 const { compareStylesheets, cssSelectors, extractCss } = BotsReleaseVerification
 
+test('external retention excludes every staged package rather than naming only Bots', () => {
+  const output = '/tmp/candidate'
+  const link = (name, target) => ({ path: join(output, 'node_modules', name), target, realTarget: target })
+  const links = [
+    link('@deepseek-ai', '/runtime/node_modules/@deepseek-ai'),
+    link('@dshfiles/bots', join(output, 'packages/@dshfiles/bots')),
+    link('@dshfiles/secret-catalog', join(output, 'packages/@dshfiles/secret-catalog')),
+    link('@dshfiles/credential-port', '/source/credential-port'),
+    link('sibling', '/tmp/candidate-sibling/runtime'),
+  ]
+  assert.deepEqual(BotsReleasePreparation.retainedTargets(links, output), ['/source/credential-port', '/tmp/candidate-sibling/runtime'])
+})
+
 async function fixture(t) {
   const root = await mkdtemp(join(tmpdir(), 'bots-release-test-'))
   t.after(async () => {
@@ -111,6 +124,7 @@ test('check rejects unexpected candidate names before opening bytes or resolving
     stockCordisIdentity: true,
     imports: [],
     publicApiImported: true,
+    publicCatalogApi: { canonical: '/synthetic/catalog-api.js', sameFile: true, owner: '@dshfiles/secret-catalog', credentialPortJavaScript: true },
     publicAdapter: { canonical: '/synthetic/adapter.js', sameFile: true, sameErrorClass: true, externalInBothHosts: true },
     sharedRuntime: { path: '/synthetic/client.js', sha256: hash, unchanged: true },
     stylesheet: {
@@ -161,7 +175,7 @@ async function sourceFixture(t) {
   const result = await fixture(t)
   const root = result.roots.sourceRoot
   execFileSync('git', ['init', '--quiet'], { cwd: root })
-  for (const name of ['bots', 'bot-openai-dot', 'ui-styles']) {
+  for (const name of ['bots', 'secret-catalog', 'bot-openai-dot', 'ui-styles']) {
     const base = join(root, 'plugins/@dshfiles', name)
     for (const [path, code] of Object.entries({
       'package.json': JSON.stringify({ name: `@dshfiles/${name}` }),
@@ -195,7 +209,9 @@ async function sourceFixture(t) {
 test('source plan copies current tracked code and safe bundle metadata, not stale dist/private/untracked files', async t => {
   const { roots } = await sourceFixture(t)
   const plan = await sourcePlan(roots.sourceRoot)
-  assert.equal(plan.length, 43)
+  assert.equal(plan.length, 57)
+  assert.ok(plan.some(entry => entry.destination === 'packages/@dshfiles/secret-catalog/src/host.ts'))
+  assert.ok(plan.some(entry => entry.destination === 'packages/@dshfiles/secret-catalog/package.json'))
   for (const path of ['src/accounts/index.ts', 'src/browser/view.ts', 'src/profiles/schema.ts']) {
     assert.ok(
       plan.some(entry => entry.destination === `packages/@dshfiles/bots/${path}`),

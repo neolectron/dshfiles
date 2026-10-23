@@ -17,12 +17,18 @@ and `postcss` parsers; JSON boundaries use public `JsonText.parse` from
 no private SDK source imports, plugin-manager calls, network operations, package
 installer invocations or deployment verbs.
 
-The result is **two Bots bundles plus the existing stylesheet owner's one
-sheet**, built from source:
+The result is **the two Bots bundles, the updated existing Secret Catalog
+owner and the existing stylesheet owner's one sheet**, built from source:
 
 - `@dshfiles/bots`: Host/client plus the public adapter and API modules.
 - `@dshfiles/bot-openai-dot`: the Dot Host adapter, resolving the same staged
   `@dshfiles/bots/adapter` file and `BotAdapterError` runtime class as the core.
+- `@dshfiles/secret-catalog`: the existing owner rebuilt with its public API module
+  and safe Host stdin transport. Dot must resolve this exact staged contract, not
+  a historical serving or feature-tree copy. This is an update to an existing
+  owner, never a second Catalog Loader row. Its public API uses the retained,
+  built credential-port JavaScript library. Public Backlog/JJ/folder-picker build
+  dependencies are retained explicitly; no additional owner is installed by this CLI.
 - `@dshfiles/ui-styles`: one replacement artifact candidate for the existing
   stylesheet owner, not another stylesheet bundle to load alongside it.
 

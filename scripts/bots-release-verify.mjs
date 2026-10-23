@@ -18,6 +18,9 @@ const EvidenceSchema = z
     stockCordisIdentity: z.literal(true),
     imports: z.array(z.object({ name: z.string(), exports: z.array(z.string()) }).strict()),
     publicApiImported: z.literal(true),
+    publicCatalogApi: z
+      .object({ canonical: z.string(), sameFile: z.literal(true), owner: z.literal('@dshfiles/secret-catalog'), credentialPortJavaScript: z.literal(true) })
+      .strict(),
     publicAdapter: z
       .object({ canonical: z.string(), sameFile: z.literal(true), sameErrorClass: z.literal(true), externalInBothHosts: z.literal(true) })
       .strict(),
@@ -94,6 +97,8 @@ async function verifyArtifacts({ sourceRoot, servingRoot, runtimeRoot, output })
   const packageRoot = name => join(output, 'packages/@dshfiles', name)
   const botsRoot = packageRoot('bots')
   const dotRoot = packageRoot('bot-openai-dot')
+  const catalogRoot = packageRoot('secret-catalog')
+  const catalogRequire = createRequire(join(catalogRoot, 'package.json'))
   const botsRequire = createRequire(join(botsRoot, 'package.json'))
   const dotRequire = createRequire(join(dotRoot, 'package.json'))
   const stageRequire = createRequire(join(output, 'package.json'))
@@ -127,11 +132,22 @@ async function verifyArtifacts({ sourceRoot, servingRoot, runtimeRoot, output })
     assert.ok(externalAdapter, 'Both Host bundles must keep the public adapter external')
   }
   const imports = []
-  for (const name of ['bots', 'bot-openai-dot', 'ui-styles']) {
+  for (const name of ['bots', 'secret-catalog', 'bot-openai-dot', 'ui-styles']) {
     const path = join(packageRoot(name), 'dist/index.js')
     const mod = await import(pathToFileURL(path))
     imports.push({ name, exports: Object.keys(mod).sort() })
   }
+  const catalogApiPath = await realpath(dotRequire.resolve('@dshfiles/secret-catalog/api'))
+  assert.equal(catalogApiPath, await realpath(join(catalogRoot, 'dist/api.js')), 'Dot must consume the staged public Catalog contract')
+  const catalogModule = await import(pathToFileURL(catalogApiPath))
+  assert.equal(catalogModule.secretCatalogApi?.owner, '@dshfiles/secret-catalog', 'The Catalog contract must retain its explicit owner')
+  const portPath = await realpath(catalogRequire.resolve('@dshfiles/credential-port'))
+  assert.equal(
+    portPath,
+    await realpath(join(sourceRoot, 'plugins/@dshfiles/credential-port/dist/index.js')),
+    'Catalog must use built credential-port JavaScript',
+  )
+  await import(pathToFileURL(portPath))
   const api = await import(pathToFileURL(join(botsRoot, 'dist/api.js')))
   assert.ok(api.botsApi, 'Public Bots API module must import')
   const botsClient = await readFile(join(botsRoot, 'dist/client.js'), 'utf8')
@@ -154,6 +170,7 @@ async function verifyArtifacts({ sourceRoot, servingRoot, runtimeRoot, output })
     stockCordisIdentity: true,
     imports,
     publicApiImported: true,
+    publicCatalogApi: { canonical: catalogApiPath, sameFile: true, owner: '@dshfiles/secret-catalog', credentialPortJavaScript: true },
     publicAdapter: { canonical: fromBots, sameFile: true, sameErrorClass: true, externalInBothHosts: true },
     sharedRuntime: { path: sharedRuntimePath, sha256: sharedHash, unchanged: true },
     stylesheet,
