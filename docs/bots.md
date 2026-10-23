@@ -50,9 +50,9 @@ Initial scope is text messaging, provider conversation selection, incoming polli
 
 ## Installation and deployment
 
-Use [profile installs](profile-installs.md), not `pnpm add <path>`. Both `@dshfiles/bots` and `@dshfiles/bot-openai-dot` must be built and composed, with the shared UI runtime/styles. The adapter requires the Bots registry; credentials require Secret Catalog at connect time. Merely enabling the bundles performs no Dot authentication or discovery network request.
+Use [profile installs](profile-installs.md), not `pnpm add <path>`. Both `@dshfiles/bots` and `@dshfiles/bot-openai-dot` must be built and composed, with the shared UI runtime/styles. The adapter requires the Bots registry; credentials require Secret Catalog at connect time. A fresh install with no enabled connections performs no Dot authentication or discovery network request. Previously accepted, enabled connections resume their Host workers after restart or adapter reactivation; disconnect first to prevent that synchronization.
 
-The checked-in web seed includes both bundles after isolated verification; enabling them does not read credentials or contact ChatGPT. Source changes are not a deployment: the selected profile must be reconciled from the checkout the user chooses. Implementation and scratch checks do not install into, rebuild, restart or validate a different running GUI. Promotion/install and the user's restart decision remain distinct from source implementation.
+The checked-in web seed includes both bundles after isolated verification; with no stored enabled connection, activating them does not read credentials or contact ChatGPT. Source changes are not a deployment: the selected profile must be reconciled from the checkout the user chooses. Implementation and scratch checks do not install into, rebuild, restart or validate a different running GUI. Promotion/install and the user's restart decision remain distinct from source implementation.
 
 ## Validation boundaries
 
