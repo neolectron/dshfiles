@@ -108,7 +108,7 @@
     "create-dshx": "workspace:*",
     "diff": "9.0.0",
     "execa": "catalog:",
-    "oxc-parser": "0.152.0",
+    "oxc-parser": "catalog:",
     "semver": "catalog:",
     "typescript": "catalog:",
     "vite": "catalog:",

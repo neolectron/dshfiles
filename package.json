@@ -38,9 +38,12 @@
   },
   "devDependencies": {
     "@ast-grep/cli": "0.45.3",
+    "@dshfiles/dshx": "workspace:*",
     "@types/node": "22.20.5",
+    "oxc-parser": "catalog:",
     "oxfmt": "catalog:",
     "oxlint": "catalog:",
+    "postcss": "8.5.30",
     "turbo": "2.11.8",
     "typescript": "catalog:",
     "zod": "catalog:"

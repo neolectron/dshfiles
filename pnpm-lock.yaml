@@ -386,6 +386,9 @@ catalogs:
     jsdom:
       specifier: 26.1.0
       version: 26.1.0
+    oxc-parser:
+      specifier: 0.152.0
+      version: 0.152.0
     oxfmt:
       specifier: 0.71.0
       version: 0.71.0
@@ -446,15 +449,24 @@ importers:
       '@ast-grep/cli':
         specifier: 0.45.3
         version: 0.45.3
+      '@dshfiles/dshx':
+        specifier: workspace:*
+        version: link:tooling/dshx/packages/dshx
       '@types/node':
         specifier: 22.20.5
         version: 22.20.5
+      oxc-parser:
+        specifier: 'catalog:'
+        version: 0.152.0
       oxfmt:
         specifier: 'catalog:'
         version: 0.71.0
       oxlint:
         specifier: 'catalog:'
         version: 1.86.0
+      postcss:
+        specifier: 8.5.30
+        version: 8.5.30
       turbo:
         specifier: 2.11.8
         version: 2.11.8
@@ -5629,7 +5641,7 @@ importers:
         specifier: 'catalog:'
         version: 10.0.1
       oxc-parser:
-        specifier: 0.152.0
+        specifier: 'catalog:'
         version: 0.152.0
       playwright:
         specifier: 1.56.1
