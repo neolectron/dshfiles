@@ -10,9 +10,12 @@ export default defineHost({
     const registry = ctx.get('botAdapters')
     if (!registry) throw new Error('The Bots adapter registry must be loaded before the Dot adapter.')
     const adapter = createDotAdapter({
-      resolveSecret: referenceText => SecretReferenceResolver.resolve({
-        referenceText, values: ctx.get('secretCatalogValues'), environmentValue: undefined,
-      }),
+      resolveSecret: referenceText =>
+        SecretReferenceResolver.resolve({
+          referenceText,
+          values: ctx.get('secretCatalogValues'),
+          environmentValue: undefined,
+        }),
     })
     ctx.effect(() => registry.register(adapter), 'bot-openai-dot: adapter')
   },

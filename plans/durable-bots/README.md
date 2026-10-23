@@ -1,121 +1,19 @@
-# Durable Bots plan
+# Durable Bots: remaining promotion gates
 
-## Context
+The provider-neutral Bots workspace, durable Host service, public v1 adapter contract and first unofficial OpenAI Dot adapter are implemented in the isolated `feature/durable-bots` Git worktree. Finished behavior, decisions, limits and verification receipts live in the [architecture/deployment guide](../../docs/bots.md), [Bots README](../../plugins/@dshfiles/bots/README.md) and [Dot README](../../plugins/@dshfiles/bot-openai-dot/README.md). This plan stays open because the work is not yet integrated into the owning checkout or activated in the user's running GUI, and no real Dot account has been authenticated. The original checkout's uncommitted work and the live instance are untouched.
 
-The user wants first-class functional and visual integration with existing long-lived agents, independent of provider. Existing Agents are saved DSH thread-launch configurations, not remote durable identities. The first real adapter is OpenAI Dot; no Grok or self-hosted implementation is in scope yet. DSH 0.2.1-rc.2 supports a global `main` panel plus additive sidebar navigation and Host-owned persistence. The running instance is profile `manuel` at :3198 and must not be changed or restarted. This checkout is Git-only; work is isolated in the `feature/durable-bots` Git worktree.
+## Open work
 
-## Goal
-
-Connect an existing Dot to a provider-neutral Bots roster and conversation UI, preserving the remote identity and safely handling unsolicited messages, reconnects, durable sends and explicit account consent.
-
-## What / Why
-
-Provide one Bots workspace, a versioned adapter registry, durable Host service, common UI and agent tools. Dot's private messaging protocol is isolated in its own adapter. Connecting a bot must not create a replacement model, native DSH Session or Codex task. Other adapters must plug in without branching the core UI.
-
-## How
-
-### Conceptual model
-
-A connection binds an adapter/account configuration to remote bot identities. A bot owns provider conversations and normalized incoming/outgoing messages. Connection health is separate from activity. Disconnecting stops local synchronization, not the remote bot. Removing local data never deletes the remote bot or vault credentials.
-
-### Architecture
-
-```text
-Bots sidebar + conversation UI -> typed Bots API -> durable Host service
-                                                   -> versioned adapter registry
-                                                        -> OpenAI Dot adapter
-                                                             -> existing remote Dot
-```
-
-### Tech choices
-
-| Choice | Decision | Rationale |
+| Gate | Status | Required action |
 | --- | --- | --- |
-| Ownership | New `@dshfiles/bots` + `@dshfiles/bot-openai-dot` | Do not change Agents/model/session semantics. |
-| Reuse | Port pinned Beeper protocol behavior, preserve AGPL provenance | Avoid rediscovery and a full Matrix stack. A small TypeScript Host adapter fits the installed Node runtime; Go is unavailable. |
-| Persistence | Supported storageDomain, serialized durable writes | Persist send intent before external effects and advance cursors only after messages. |
-| Updates | Host-owned bounded polling; UI query snapshots | Works without a mounted panel; no fake stream or always-running browser promise. |
-| Credentials | Secret references resolved on Host only | Never accept raw tokens in UI, settings, tools or logs. No automatic browser/cookie extraction. |
-| UI state | Query + Form + explicit lifecycle state | No browser-owned connection loop or duplicated transcript authority. |
+| Review and integrate source | Pending explicit promotion | Review the feature branch, preserve the original checkout's existing edits, and integrate into the chosen owning checkout. The source repository was Git-only; do not invent a JJ revision or assume a JJ workspace exists. |
+| Activate in the selected profile | Pending user deployment choice | Confirm which checkout serves the GUI, reconcile the two bundles with the supported profile workflow, and let the user choose when to restart. The checked-in web seed is ready; it is not a claim that the current live profile changed. |
+| Real account smoke check | Pending explicit account linking | The user stores/chooses existing renewable access/session credential references, reads and accepts broad ChatGPT-account authority, then connects their existing primary Dot. Verify account/room binding, one requested send/reply and a reconnect. Never extract a browser session, echo values, bypass challenges or silently resend uncertain delivery. |
 
-### Operations / behavior
+**Resume here:** Review the completed implementation and focused receipts in the linked docs. Do not repeat fixture implementation or restart the live GUI. Source tests and a synthetic provider prove the integration boundaries, not OpenAI's current acceptance of this private protocol for the user's account/workspace.
 
-Discover registered adapters; connect after risk consent; list bots; read conversation; send/reconcile a stable request; mark local messages read; reconnect/disconnect; explicitly remove local connection data. Unsupported provider content is a safe native handoff, not dropped or executed. Adapter capabilities must be honest: initial implementation is durable text messaging, with unsupported rich content linked to the original application.
+## Not part of this release
 
-## What this allows
+Grok/self-hosted adapters, browser-assisted credential acquisition, full pre-link history, inline approvals, media/computer control, WebSocket presence and per-human isolation need separate scoped work. V1 text/read-only capability limits are explicit; unsupported content hands off to native ChatGPT. Synchronization runs while the DSH Host runs, not as a separately managed OS daemon.
 
-- The same existing Dot, not a clone.
-- Provider-neutral roster, normalized conversation and delivery states.
-- Proactive message polling and reconnect recovery while the Host runs.
-- Independent minimal test adapter to prove substitution.
-
-## What this does not allow
-
-- No Grok implementation, remote agent provisioning or universal model/memory editing.
-- No claim of official OpenAI API support, full pre-link history import or authenticated validation without the user's separate account-linking action.
-- No automatic approvals, browser-session extraction, challenge bypass or proxy rotation.
-- No per-human isolation: all admitted browsers share DSH's owner authority. No shared-user deployment endorsement.
-- Host shutdown stops synchronization; the remote Dot can still run. No separate OS daemon in this milestone.
-
-## UI & UX
-
-### Desktop
-
-A Bots roster beside a conversation, with provider identity, unread counts, honest connection status, last sync and a secondary details/connect pane. The composer has explicit send/retry state and no model picker. Risk disclosure precedes connecting; credentials are reference-only fields with the vault picker binding. Disconnected text drafts survive bot navigation; no silent send or retry.
-
-### Mobile
-
-Roster and conversation are separate narrow-pane views with Back navigation; no fixed desktop-width columns. Keyboard access, accessible labels and semantic DSH colors are required.
-
-### Common interactions
-
-| Action | Result |
-| --- | --- |
-| Connect | Adapter validates references and discovers exact remote identity; explicit risk acceptance required. |
-| Send | Durable request intent then provider send; confirmed/failed/uncertain state shown truthfully. |
-| Reconnect | Same verified identity, cursor replay and no blind duplicate sends. |
-| Disconnect | Stop local synchronization; keep local history; remote work is unaffected. |
-| Remove | Explicit confirmation removes local connection/history only. |
-
-## Data model
-
-Host storage owns connection references, verified bot identity, per-conversation cursor, local message IDs and remote IDs, pending request IDs/body fingerprints, unread boundaries and sanitized health. Provider credentials and raw provider payloads do not enter that store. A provider's remote conversation remains canonical; DSH owns a bounded local projection and outbox.
-
-## Implementation steps / progress
-
-| Milestone | Status | Evidence |
-| --- | --- | --- |
-| Plan, schemas and adapter contract | Complete | Versioned public adapter/API modules; independent-registry and unsafe-link tests pass (4 tests). |
-| Durable Bots Host/store and substitution tests | Complete | Parent rerun: 40 adapter/engine/store/real Cordis+JSON tests pass, including atomic persistence, restart, uncertain sends, edits and capability boundaries. |
-| Dot adapter with protocol/security fixtures | Complete | Parent rerun: 55 synthetic protocol/security/Host tests + strict types pass; no real-account authentication. |
-| Roster, connection form and conversation | In progress | Scratch proves roster, safe linking, send/echo/proactive and narrow-pane navigation; consent deadlock fixed with real DOM tests. Scroll-follow polish underway. |
-| Build/import/contract and scratch browser proof | Pending | |
-| Documentation, deployment and completion review | Pending | |
-
-**Resume here:** Finish DOM scroll-follow checks, rerun all three Bots journeys with `DSHX_E2E_CHROMIUM_EXECUTABLE=/etc/profiles/per-user/neolectron/bin/google-chrome` and scratch-only PATH launcher, capture/reference screenshot, walk catalog reaches with isolated dshx dev, then run final scoped lint/build/import checks. All earlier parent jobs have been collected; no user credentials or live profile were touched. Pinned Playwright headless1194 cannot run on this NixOS host (missing libglib); the explicit system Chrome155 override is tested and its version is included in both task and scenario cache keys.
-
-## Open questions / proof gates
-
-- Personal primary Dot compatibility is source-backed; user's account/workspace compatibility is unverified.
-- Connecting requires existing renewable session credentials stored through the user's vault; secure browser-assisted linking is not silently assumed.
-- OpenAI can reject this unofficial protocol. Fail safely on access denial/challenges; do not bypass them.
-- Rich task/approval/media interactions are not advertised unless implemented and tested.
-
-## Acceptance criteria
-
-- [ ] Generic adapter registration/substitution and unsupported capability tests.
-- [ ] Durable send/replay/restart, identity binding, cancellation and failure tests.
-- [ ] Dot fixture tests cover discovery/send/pagination/auth failures and credential redaction.
-- [ ] Read/write tools share the UI API and destructive actions require explicit confirmation.
-- [ ] Global Bots UI works without a native Session and on narrow panes.
-- [ ] Unit/typecheck/build/import and scratch end-to-end journey pass; screenshot is kept with the UI plugin.
-- [ ] No raw credentials in UI/storage/logs; no live instance changes.
-- [ ] Unverified real-account behavior is stated explicitly.
-
-## Decisions log
-
-| Date | Decision | Rationale |
-| --- | --- | --- |
-| 2026-10-23 | Provider-neutral Bots, Dot adapter only | Direct user requirement; avoid provider-shaped product. |
-| 2026-10-23 | Port protocol to a separately licensed Host adapter | Node is installed, Go is not; avoid unnecessary Matrix/daemon infrastructure. |
-| 2026-10-23 | Vault-reference linking first, no automated credential acquisition | Broad ChatGPT credentials require explicit consent and must not cross the client boundary. |
+When the promotion gates are resolved, use `complete-plan`: preserve the durable guide and receipts, remove this plan and its index row, and fix links. Until then, do not report that the live Dot is linked.

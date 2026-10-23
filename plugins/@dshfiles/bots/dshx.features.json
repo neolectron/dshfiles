@@ -1,0 +1,138 @@
+{
+  "schemaVersion": 1,
+  "kind": "bundle",
+  "features": [
+    {
+      "id": "bots-workspace",
+      "title": "A global workspace for existing durable bots",
+      "summary": "Open Bots without creating a native DSH Session. A provider-neutral roster shows existing identities, providers, unread counts and connection health separately from remote activity. Select a bot and provider conversation to read the bounded local cache, send text, explicitly retry the original request, or mark messages read. Narrow panes use Back navigation. No production sample identities are supplied.",
+      "reach": ["click button \"Bots\"", "expect heading \"Bots\""],
+      "surfaces": ["client", "host", "storage", "tool"],
+      "configuration": [],
+      "states": [
+        "loading",
+        "empty",
+        "adapters-unavailable",
+        "host-unavailable",
+        "connected",
+        "disconnected",
+        "auth-required",
+        "adapter-missing",
+        "activity-unknown",
+        "read-only",
+        "conversation-selected",
+        "sending",
+        "delivery-unconfirmed",
+        "draft-preserved",
+        "following-latest",
+        "reading-earlier-messages",
+        "new-messages-below",
+        "remove-confirmation"
+      ],
+      "failureModes": [
+        "A missing Bots API owner shows unavailable and stops polling rather than crashing the slot.",
+        "Connection health never implies that the remote bot is idle or stopped.",
+        "Disconnect stops local synchronization only; removal deletes local connection/cache only, not the remote bot or vault credentials.",
+        "A transport error leaves delivery unconfirmed. Reconnect never resends; explicit retry retains the original request UUID.",
+        "Unsupported content is text-only with an original-app link only when the adapter supplied a credential-free HTTPS URL.",
+        "The displayed conversation is a bounded local projection. Since-link history is disclosed and is not advertised as a full import."
+      ],
+      "externalDependencies": [],
+      "verification": [
+        {
+          "kind": "unit-test",
+          "id": "bots.draft-navigation",
+          "file": "plugins/@dshfiles/bots/src/bots-ui-model.test.ts",
+          "testName": "keeps separate drafts across bot and conversation navigation"
+        },
+        {
+          "kind": "unit-test",
+          "id": "bots.original-send-uuid",
+          "file": "plugins/@dshfiles/bots/src/bots-ui-model.test.ts",
+          "testName": "preserves the original UUID and body for an explicit retry"
+        },
+        {
+          "kind": "unit-test",
+          "id": "bots.stale-send-completion",
+          "file": "plugins/@dshfiles/bots/src/bots-ui-model.test.ts",
+          "testName": "does not overwrite a newer draft or intent with a stale completion"
+        },
+        {
+          "kind": "unit-test",
+          "id": "bots.safe-native-links",
+          "file": "plugins/@dshfiles/bots/src/bots-ui-model.test.ts",
+          "testName": "permits only credential-free HTTPS native handoff links"
+        },
+        {
+          "kind": "unit-test",
+          "id": "bots.query-signals",
+          "file": "plugins/@dshfiles/bots/src/bots-queries.test.ts",
+          "testName": "forwards Query abort signals to snapshot and conversation reads"
+        },
+        {
+          "kind": "unit-test",
+          "id": "bots.query-owner-missing",
+          "file": "plugins/@dshfiles/bots/src/bots-queries.test.ts",
+          "testName": "stops polling and retries when the Bots Host owner is missing"
+        },
+        {
+          "kind": "unit-test",
+          "id": "bots.viewport-follow",
+          "file": "plugins/@dshfiles/bots/src/bots-conversation-viewport.test.tsx",
+          "testName": "starts at the latest message and follows updates when the reader is near the bottom"
+        },
+        {
+          "kind": "unit-test",
+          "id": "bots.viewport-reading-position",
+          "file": "plugins/@dshfiles/bots/src/bots-conversation-viewport.test.tsx",
+          "testName": "preserves a reader scrolled up and offers an explicit jump when new messages arrive"
+        },
+        { "kind": "gherkin", "id": "bots.empty-workspace", "featureFile": "tooling/dshx/e2e/features/bots.feature" },
+        { "kind": "gherkin", "id": "bots.fixture-conversation", "featureFile": "tooling/dshx/e2e/features/bots.feature" }
+      ]
+    },
+    {
+      "id": "connect-bot",
+      "title": "Connect through provider adapter metadata",
+      "summary": "Choose a registered provider adapter and fill its declared fields. Credential fields accept vault references only and offer the shared secret-reference binding. The adapter risk disclosure requires explicit acceptance. No raw credential, native DSH thread, model preset or remote replacement bot is created.",
+      "reach": ["click button \"Bots\"", "click button \"Connect bot\"", "expect dialog \"Connect bot\""],
+      "surfaces": ["client", "host", "tool"],
+      "configuration": [],
+      "states": ["no-adapters", "adapter-selected", "risk-not-accepted", "validation-error", "connecting", "connection-error"],
+      "failureModes": [
+        "No registered adapter leaves an honest unavailable message, not a fake bot or credential form.",
+        "The reference grammar is shared with credential-port. Raw tokens are rejected before a connect request.",
+        "Risk acceptance is initially false and resets when choosing another adapter.",
+        "Connection failure shows a safe generic error, never a raw provider response or submitted credential."
+      ],
+      "externalDependencies": [],
+      "verification": [
+        {
+          "kind": "unit-test",
+          "id": "bots.metadata-consent",
+          "file": "plugins/@dshfiles/bots/src/bots-ui-model.test.ts",
+          "testName": "requires explicit consent even when reference fields are valid"
+        },
+        {
+          "kind": "unit-test",
+          "id": "bots.consent-submit-dom",
+          "file": "plugins/@dshfiles/bots/src/bots-connect-dialog.test.tsx",
+          "testName": "enables immediate submit after checking consent even when the last field was blurred first"
+        },
+        {
+          "kind": "unit-test",
+          "id": "bots.reference-only-fields",
+          "file": "plugins/@dshfiles/bots/src/bots-ui-model.test.ts",
+          "testName": "uses adapter metadata and the shared reference grammar, never raw tokens"
+        },
+        {
+          "kind": "unit-test",
+          "id": "bots.provider-substitution-form",
+          "file": "plugins/@dshfiles/bots/src/bots-ui-model.test.ts",
+          "testName": "accepts a completely different provider without provider-specific fields"
+        },
+        { "kind": "gherkin", "id": "bots.connect-metadata", "featureFile": "tooling/dshx/e2e/features/bots.feature" }
+      ]
+    }
+  ]
+}

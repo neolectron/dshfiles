@@ -3,13 +3,62 @@ import { z } from 'zod'
 import { botConnectInputSchema, botMessageSchema, botsSnapshotSchema } from './contract.js'
 const connectionInput = z.object({ connectionId: z.string().min(1).max(300) }).strict()
 const conversationInput = z.object({ botId: z.string().min(1).max(600), conversationId: z.string().min(1).max(300) }).strict()
-export const botsApi = defineApi({ id: 'bots', version: 1, owner: '@dshfiles/bots', methods: {
-  snapshot: method({ input: z.void(), output: botsSnapshotSchema, description: 'Read connected durable bots, adapters, unread counts and sanitized connection health. Does not read conversation text.', tool: { name: 'bots_list', readOnly: true } }),
-  connect: method({ input: botConnectInputSchema, output: botsSnapshotSchema, description: 'Connect an existing durable bot using adapter configuration references. May run only when the user asked and explicitly accepted the displayed adapter risks.', tool: { name: 'bots_connect', readOnly: false } }),
-  reconnect: method({ input: connectionInput, output: botsSnapshotSchema, description: 'Reconnect a locally configured bot without changing its remote identity. May run only when the user asked.', tool: { name: 'bots_reconnect', readOnly: false } }),
-  disconnect: method({ input: connectionInput, output: botsSnapshotSchema, description: 'Stop local bot synchronization, retaining local history. Does not stop or delete the remote bot. May run only when the user asked.', tool: { name: 'bots_disconnect', readOnly: false } }),
-  remove: method({ input: connectionInput.extend({ confirm: z.literal(true) }), output: botsSnapshotSchema, description: 'Remove local bot connection and cached conversation data. Does not delete the remote bot or vault credentials. Destructive: requires explicit confirm true and may run only when the user asked.', tool: { name: 'bots_remove', readOnly: false } }),
-  messages: method({ input: conversationInput.extend({ before: z.string().optional(), limit: z.number().int().min(1).max(100).default(50) }), output: z.object({ messages: z.array(botMessageSchema), hasMore: z.boolean() }).strict(), description: 'Read cached messages from one connected bot conversation. Read private bot text only when the user asks for it.', tool: { name: 'bots_messages', readOnly: true } }),
-  send: method({ input: conversationInput.extend({ text: z.string().trim().min(1).max(16000), requestId: z.string().uuid() }), output: botMessageSchema, description: 'Send a user-authorized message to an existing bot. Reuse the original requestId for an explicit retry; never send private thread context without user authorization. May run only when the user asked.', tool: { name: 'bots_send', readOnly: false } }),
-  markRead: method({ input: conversationInput.extend({ throughMessageId: z.string().min(1).max(600) }), output: botsSnapshotSchema, description: 'Mark locally cached bot messages read through the specified message, without sending a remote read receipt. May run only when the user asked.', tool: { name: 'bots_mark_read', readOnly: false } }),
-} })
+export const botsApi = defineApi({
+  id: 'bots',
+  version: 1,
+  owner: '@dshfiles/bots',
+  methods: {
+    snapshot: method({
+      input: z.void(),
+      output: botsSnapshotSchema,
+      description: 'Read connected durable bots, adapters, unread counts and sanitized connection health. Does not read conversation text.',
+      tool: { name: 'bots_list', readOnly: true },
+    }),
+    connect: method({
+      input: botConnectInputSchema,
+      output: botsSnapshotSchema,
+      description:
+        'Connect an existing durable bot using adapter configuration references. May run only when the user asked and explicitly accepted the displayed adapter risks.',
+      tool: { name: 'bots_connect', readOnly: false },
+    }),
+    reconnect: method({
+      input: connectionInput,
+      output: botsSnapshotSchema,
+      description: 'Reconnect a locally configured bot without changing its remote identity. May run only when the user asked.',
+      tool: { name: 'bots_reconnect', readOnly: false },
+    }),
+    disconnect: method({
+      input: connectionInput,
+      output: botsSnapshotSchema,
+      description: 'Stop local bot synchronization, retaining local history. Does not stop or delete the remote bot. May run only when the user asked.',
+      tool: { name: 'bots_disconnect', readOnly: false },
+    }),
+    remove: method({
+      input: connectionInput.extend({ confirm: z.literal(true) }),
+      output: botsSnapshotSchema,
+      description:
+        'Remove local bot connection and cached conversation data. Does not delete the remote bot or vault credentials. Destructive: requires explicit confirm true and may run only when the user asked.',
+      tool: { name: 'bots_remove', readOnly: false },
+    }),
+    messages: method({
+      input: conversationInput.extend({ before: z.string().optional(), limit: z.number().int().min(1).max(100).default(50) }),
+      output: z.object({ messages: z.array(botMessageSchema), hasMore: z.boolean() }).strict(),
+      description: 'Read cached messages from one connected bot conversation. Read private bot text only when the user asks for it.',
+      tool: { name: 'bots_messages', readOnly: true },
+    }),
+    send: method({
+      input: conversationInput.extend({ text: z.string().trim().min(1).max(16000), requestId: z.string().uuid() }),
+      output: botMessageSchema,
+      description:
+        'Send a user-authorized message to an existing bot. Reuse the original requestId for an explicit retry; never send private thread context without user authorization. May run only when the user asked.',
+      tool: { name: 'bots_send', readOnly: false },
+    }),
+    markRead: method({
+      input: conversationInput.extend({ throughMessageId: z.string().min(1).max(600) }),
+      output: botsSnapshotSchema,
+      description:
+        'Mark locally cached bot messages read through the specified message, without sending a remote read receipt. May run only when the user asked.',
+      tool: { name: 'bots_mark_read', readOnly: false },
+    }),
+  },
+})

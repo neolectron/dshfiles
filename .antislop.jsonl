@@ -1,0 +1,1 @@
+{"id":"1792712753-5377","kind":"antislop","text":"When canSubmit disables submission, validate explicit consent on change; do not depend on a blur the disabled submit cannot trigger. Prove consent followed immediately by submit in a real DOM test.","tag":"plugin-ui","severity":"major","pattern":"","prescription":"","state":"open","createdAt":"2026-10-23T01:45:53+02:00"}

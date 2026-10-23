@@ -17,6 +17,7 @@ This directory holds repository-wide operational guidance. Product and API docum
 | [`scripts/README.md`](../scripts/README.md)                  | Repository-level scripts and their owning workflows.                                                                                     |
 | [Agent tool parity](agent-tool-parity.md)                    | Every user-facing capability's agent tool, what is missing, and which gaps need a Host verb.                                             |
 | [Native forks](native-forks.md)                              | Vendored native DSH packages, their pinned upstream and delta, and the drift/upgrade diff script.                                        |
+| [Durable Bots](bots.md) | Provider-neutral external bot conversations, adapter ownership, credential safety, deployment and verification boundaries. |
 | [Secret references](secret-references.md)                    | How a plugin stores `secret:ALIAS` instead of a value, resolves it on the Host, and offers the vault in a field.                         |
 | [Performance](performance.md)                                | What made the live GUI slow, what fixed it, before/after numbers, and what is still open.                                                |
 | [Repository checks](repository-checks.md)                    | Which check to run, `node --run` versus `pnpm run`, the e2e scope rule, and the Turbo cache/`--force` policy.                            |

@@ -71,6 +71,18 @@ backing verb; `host-gap` counts capabilities no verb can reach yet.
 | Native platform / admin                                                                                                                           | 40                   | 3                                                                                                        | 30            | 11        |
 | settings-shell, plugin-marketplace, mcp-servers, secret-catalog, privacy-controls (+ `plugin-ui`, `shared-runtime`, `shared-streams`: no surface) | 53                   | 16 (`secret_list`, `secret_get`, `mcp__*`, `settings_list`, `settings_set`, `settings_unset`, `dsh_release_status`, 9 `mcp_*`) | 19            | 5         |
 
+## Durable Bots additions (DSH 0.2.1-rc.2)
+
+`@dshfiles/bots` serves the same typed API to its workspace and tools:
+`bots_list`, `bots_connect`, `bots_reconnect`, `bots_disconnect`,
+`bots_remove`, `bots_messages`, `bots_send`, and `bots_mark_read`.
+Private conversation reads require a user request; writes require the named
+user action; connection risks must be accepted; removing local data requires
+`confirm: true`. Disconnect and local removal never stop or delete a remote bot.
+Provider adapters register the existing port rather than duplicating these tools.
+Drafts, roster selection and opening a native handoff link are presentation-only.
+The shared owner authority does not provide per-human isolation.
+
 ## Missing tools
 
 Each row is a tool worth building today: the backing verb already exists.

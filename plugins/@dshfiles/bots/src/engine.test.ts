@@ -3,27 +3,47 @@ import type { KvTable } from '@deepseek-ai/dsh-storage-domain'
 import { BotAdapterError, createBotAdapterRegistry } from '@dshfiles/bots/adapter'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { AdapterMessage, BotAdapter, BotAdapterSession, BotPollInput, BotSendInput } from './adapter.js'
-import type { BotIdentity } from './contract.js'
+import type { BotIdentity } from '@dshfiles/bots/adapter'
 import { BotsEngine } from './engine.js'
-import { createBotsStore, MAX_MESSAGES_PER_CONVERSATION, STORAGE_FAILED, type BotsState } from './store.js'
+import { BotsStorage, MAX_MESSAGES_PER_CONVERSATION, STORAGE_FAILED, type BotsState } from './store.js'
 
 const identity = (): BotIdentity => ({
-  remoteId: 'remote-bot', name: 'Fixture bot', description: '', nativeUrl: null,
+  remoteId: 'remote-bot',
+  name: 'Fixture bot',
+  description: '',
+  nativeUrl: null,
   capabilities: { text: true, attachments: false, approvals: false, activity: false },
   conversations: [{ id: 'conversation', title: 'Fixture conversation', historyScope: 'since-link', initialCursor: 'original-link' }],
 })
-const remote = (id: string, text = 'hello'): AdapterMessage => ({ id, text, author: 'bot', requestId: null, notice: null, nativeUrl: null, createdAt: 1, updatedAt: 1 })
+const remote = (id: string, text = 'hello'): AdapterMessage => ({
+  id,
+  text,
+  author: 'bot',
+  requestId: null,
+  notice: null,
+  nativeUrl: null,
+  createdAt: 1,
+  updatedAt: 1,
+})
 const echo = (input: BotSendInput): AdapterMessage => ({ ...remote(`remote-${input.requestId}`, input.text), requestId: input.requestId, author: 'user' })
 const deferred = <Value>() => {
-  let resolve: (value: Value) => void = () => { throw new Error('Deferred not ready') }
-  const promise = new Promise<Value>(done => { resolve = done })
+  let resolve: (value: Value) => void = () => {
+    throw new Error('Deferred not ready')
+  }
+  const promise = new Promise<Value>(done => {
+    resolve = done
+  })
   return { promise, resolve }
 }
 
 /** A minimal second implementation: the engine knows no provider vocabulary and never resolves a credential itself. */
 class FakeAdapter implements BotAdapter {
   readonly info = {
-    id: 'fixture', version: 1 as const, name: 'Fixture', description: 'Test implementation', risk: 'Fixture only',
+    id: 'fixture',
+    version: 1 as const,
+    name: 'Fixture',
+    description: 'Test implementation',
+    risk: 'Fixture only',
     fields: [{ key: 'credential', label: 'Credential reference', kind: 'secret-reference' as const, required: true, help: '' }],
   }
   readonly pollIntervalMs = 1000
@@ -45,11 +65,23 @@ class FakeAdapter implements BotAdapter {
     this.opens++
     this.configs.push(input.config)
     return {
-      accountId: this.accountId, bots: structuredClone(this.bots),
-      send: async input => { this.sends.push(input); return this.onSend(input) },
-      poll: async input => { this.polls.push(input); return this.onPoll(input) },
-      reconcile: async input => { this.reconciles.push(input); return this.onReconcile(input) },
-      close: async () => { this.closes++ },
+      accountId: this.accountId,
+      bots: structuredClone(this.bots),
+      send: async input => {
+        this.sends.push(input)
+        return this.onSend(input)
+      },
+      poll: async input => {
+        this.polls.push(input)
+        return this.onPoll(input)
+      },
+      reconcile: async input => {
+        this.reconciles.push(input)
+        return this.onReconcile(input)
+      },
+      close: async () => {
+        this.closes++
+      },
     }
   }
 }
@@ -58,23 +90,41 @@ const memory = () => {
   const rows = new Map<string, BotsState>()
   let beforePut: (value: BotsState) => Promise<void> = async () => undefined
   const table: KvTable<string, BotsState> = {
-    get: key => { const value = rows.get(key); return value === undefined ? undefined : structuredClone(value) },
-    entries: () => rows.entries(), keys: () => rows.keys(), get size() { return rows.size },
-    put: async (key, value) => { await beforePut(value); rows.set(key, structuredClone(value)) },
+    get: key => {
+      const value = rows.get(key)
+      return value === undefined ? undefined : structuredClone(value)
+    },
+    entries: () => rows.entries(),
+    keys: () => rows.keys(),
+    get size() {
+      return rows.size
+    },
+    put: async (key, value) => {
+      await beforePut(value)
+      rows.set(key, structuredClone(value))
+    },
     delete: async key => rows.delete(key),
     update: async (key, change) => {
       const current = rows.get(key)
       if (current === undefined) throw new Error('Missing fixture state')
-      const next = change(structuredClone(current)); await table.put(key, next); return next
+      const next = change(structuredClone(current))
+      await table.put(key, next)
+      return next
     },
   }
-  return { rows, table, beforePut: (hook: typeof beforePut) => { beforePut = hook } }
+  return {
+    rows,
+    table,
+    beforePut: (hook: typeof beforePut) => {
+      beforePut = hook
+    },
+  }
 }
 const engines: BotsEngine[] = []
 const fixture = (adapter = new FakeAdapter(), disk = memory()) => {
   const registry = createBotAdapterRegistry()
   const unregister = registry.register(adapter)
-  const store = createBotsStore(disk.table, () => Date.now())
+  const store = BotsStorage.create(disk.table, () => Date.now())
   const engine = new BotsEngine({ store, registry })
   engines.push(engine)
   return { adapter, disk, registry, unregister, store, engine }
@@ -88,7 +138,10 @@ const connect = async (engine: BotsEngine) => {
 }
 const messages = (engine: BotsEngine, input: { botId: string; conversationId: string }) => engine.messages({ ...input, limit: 100 }).messages
 
-beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(1000) })
+beforeEach(() => {
+  vi.useFakeTimers()
+  vi.setSystemTime(1000)
+})
 afterEach(async () => {
   await Promise.all(engines.splice(0).map(engine => engine.close()))
   vi.useRealTimers()
@@ -146,7 +199,9 @@ describe('durable provider-neutral Bots engine', () => {
     const { engine, adapter } = fixture()
     const input = await connect(engine)
     const request = { ...input, requestId: randomUUID(), text: 'authorized body' }
-    adapter.onSend = async () => { throw new Error('DO_NOT_LEAK_FIXTURE_SECRET') }
+    adapter.onSend = async () => {
+      throw new Error('DO_NOT_LEAK_FIXTURE_SECRET')
+    }
     const initial = await engine.send(request)
     expect(initial.delivery).toBe('uncertain')
     expect(initial.notice).not.toContain('DO_NOT_LEAK')
@@ -157,7 +212,10 @@ describe('durable provider-neutral Bots engine', () => {
     adapter.onReconcile = async () => ({ kind: 'not-found' })
     adapter.onSend = async input => echo(input)
     expect((await engine.send(request)).delivery).toBe('sent')
-    expect(adapter.sends.map(input => [input.requestId, input.text, input.initialCursor])).toEqual([[request.requestId, request.text, 'original-link'], [request.requestId, request.text, 'original-link']])
+    expect(adapter.sends.map(input => [input.requestId, input.text, input.initialCursor])).toEqual([
+      [request.requestId, request.text, 'original-link'],
+      [request.requestId, request.text, 'original-link'],
+    ])
   })
 
   it('reconciles a retained intent after restart and never acknowledges a stale completion', async () => {
@@ -215,13 +273,16 @@ describe('durable provider-neutral Bots engine', () => {
     expect(adapter.sends).toHaveLength(0)
   })
 
-  it.each(['attachments', 'approvals', 'activity'] as const)('rejects reserved unsupported %s capabilities rather than silently advertising them', async capability => {
-    const { engine, adapter } = fixture()
-    adapter.bots[0]!.capabilities[capability] = true
-    const snapshot = await engine.connect({ adapterId: 'fixture', label: 'Unsupported', config: { credential: 'secret:fixture' }, acceptRisks: true })
-    expect(snapshot.bots).toHaveLength(0)
-    expect(snapshot.connections[0]?.error).toContain('does not support')
-  })
+  it.each(['attachments', 'approvals', 'activity'] as const)(
+    'rejects reserved unsupported %s capabilities rather than silently advertising them',
+    async capability => {
+      const { engine, adapter } = fixture()
+      adapter.bots[0]!.capabilities[capability] = true
+      const snapshot = await engine.connect({ adapterId: 'fixture', label: 'Unsupported', config: { credential: 'secret:fixture' }, acceptRisks: true })
+      expect(snapshot.bots).toHaveLength(0)
+      expect(snapshot.connections[0]?.error).toContain('does not support')
+    },
+  )
 
   it('keeps remote edits and deletion projections separate from immutable original send fingerprints', async () => {
     const { engine, adapter } = fixture()
@@ -234,7 +295,11 @@ describe('durable provider-neutral Bots engine', () => {
     expect(engine.snapshot().connections[0]?.status).toBe('connected')
     expect((await engine.send(request)).id).toBe(sent.id)
     await expect(engine.send({ ...request, text: 'edited remotely' })).rejects.toThrow('different destination or message body')
-    adapter.onPoll = async () => ({ messages: [{ ...echo(adapter.sends[0]!), text: '', notice: 'Deleted remotely', updatedAt: 3 }], cursor: 'deleted', hasMore: false })
+    adapter.onPoll = async () => ({
+      messages: [{ ...echo(adapter.sends[0]!), text: '', notice: 'Deleted remotely', updatedAt: 3 }],
+      cursor: 'deleted',
+      hasMore: false,
+    })
     await vi.advanceTimersByTimeAsync(1000)
     expect(messages(engine, input)[0]?.text).toBe('')
     expect(messages(engine, input)[0]?.notice).toBe('Deleted remotely')
@@ -245,12 +310,18 @@ describe('durable provider-neutral Bots engine', () => {
   it.each(['sent', 'uncertain'] as const)('retains bot replies that reference a %s outgoing request without treating them as user echoes', async delivery => {
     const { engine, adapter } = fixture()
     const input = await connect(engine)
-    if (delivery === 'uncertain') adapter.onSend = async () => { throw new Error('Fixture ambiguous delivery') }
+    if (delivery === 'uncertain')
+      adapter.onSend = async () => {
+        throw new Error('Fixture ambiguous delivery')
+      }
     const request = { ...input, requestId: randomUUID(), text: 'question' }
     await engine.send(request)
     adapter.onPoll = async () => ({ messages: [{ ...remote('bot-reply', 'answer'), requestId: request.requestId }], cursor: 'reply', hasMore: false })
     await vi.advanceTimersByTimeAsync(0)
-    expect(messages(engine, input).map(message => [message.author, message.delivery])).toEqual([['user', delivery], ['bot', 'received']])
+    expect(messages(engine, input).map(message => [message.author, message.delivery])).toEqual([
+      ['user', delivery],
+      ['bot', 'received'],
+    ])
     expect(engine.snapshot().connections[0]?.status).toBe('connected')
     expect(engine.snapshot().bots[0]?.unread).toBe(1)
   })
@@ -313,10 +384,16 @@ describe('durable provider-neutral Bots engine', () => {
   it('retains an unresolved intent beyond the settled history cache limit', async () => {
     const { engine, adapter, store } = fixture()
     const input = await connect(engine)
-    adapter.onSend = async () => { throw new Error('Fixture ambiguous delivery') }
+    adapter.onSend = async () => {
+      throw new Error('Fixture ambiguous delivery')
+    }
     const pending = await engine.send({ ...input, requestId: randomUUID(), text: 'must survive retention' })
     let index = 0
-    adapter.onPoll = async () => ({ messages: Array.from({ length: 100 }, () => remote(`pending-history-${index++}`)), cursor: `pending-page-${index}`, hasMore: index < 600 })
+    adapter.onPoll = async () => ({
+      messages: Array.from({ length: 100 }, () => remote(`pending-history-${index++}`)),
+      cursor: `pending-page-${index}`,
+      hasMore: index < 600,
+    })
     await vi.advanceTimersByTimeAsync(600)
     expect(store.read().messages.some(row => row.message.id === pending.id && row.message.delivery === 'uncertain')).toBe(true)
     expect(store.read().messages).toHaveLength(MAX_MESSAGES_PER_CONVERSATION + 1)
@@ -342,8 +419,12 @@ describe('durable provider-neutral Bots engine', () => {
 
   it('rejects raw secrets and unknown fields before opening or persisting them', async () => {
     const { engine, adapter, store } = fixture()
-    await expect(engine.connect({ adapterId: 'fixture', label: 'Bad', config: { credential: 'raw-secret-fixture' }, acceptRisks: true })).rejects.toThrow('secret references')
-    await expect(engine.connect({ adapterId: 'fixture', label: 'Bad', config: { credential: 'secret:fixture', token: 'raw-secret-fixture' }, acceptRisks: true })).rejects.toThrow('Unknown')
+    await expect(engine.connect({ adapterId: 'fixture', label: 'Bad', config: { credential: 'raw-secret-fixture' }, acceptRisks: true })).rejects.toThrow(
+      'secret references',
+    )
+    await expect(
+      engine.connect({ adapterId: 'fixture', label: 'Bad', config: { credential: 'secret:fixture', token: 'raw-secret-fixture' }, acceptRisks: true }),
+    ).rejects.toThrow('Unknown')
     expect(adapter.opens).toBe(0)
     expect(JSON.stringify(store.read())).not.toContain('raw-secret-fixture')
     await engine.connect({ adapterId: 'fixture', label: 'Canonical', config: { credential: ' secret:fixture@prod ' }, acceptRisks: true })
@@ -352,11 +433,15 @@ describe('durable provider-neutral Bots engine', () => {
 
   it('publishes only deliberately safe adapter errors', async () => {
     const { engine, adapter } = fixture()
-    adapter.onPoll = async () => { throw new Error('DO_NOT_LEAK_PROVIDER_BODY') }
+    adapter.onPoll = async () => {
+      throw new Error('DO_NOT_LEAK_PROVIDER_BODY')
+    }
     await connect(engine)
     await vi.advanceTimersByTimeAsync(0)
     expect(engine.snapshot().connections[0]?.error).not.toContain('DO_NOT_LEAK')
-    adapter.onPoll = async () => { throw new BotAdapterError('auth-required', 'Relink the fixture account.') }
+    adapter.onPoll = async () => {
+      throw new BotAdapterError('auth-required', 'Relink the fixture account.')
+    }
     await vi.advanceTimersByTimeAsync(2000)
     expect(engine.snapshot().connections[0]?.status).toBe('auth-required')
     expect(engine.snapshot().connections[0]?.error).toBe('Relink the fixture account.')
@@ -365,8 +450,13 @@ describe('durable provider-neutral Bots engine', () => {
   it('honors a provider polling cadence longer than one minute', async () => {
     const provider = new FakeAdapter()
     const registry = createBotAdapterRegistry()
-    registry.register({ info: provider.info, pollIntervalMs: 300000, validateConfig: config => provider.validateConfig(config), open: input => provider.open(input) })
-    const engine = new BotsEngine({ registry, store: createBotsStore(memory().table) })
+    registry.register({
+      info: provider.info,
+      pollIntervalMs: 300000,
+      validateConfig: config => provider.validateConfig(config),
+      open: input => provider.open(input),
+    })
+    const engine = new BotsEngine({ registry, store: BotsStorage.create(memory().table) })
     engines.push(engine)
     await connect(engine)
     await vi.advanceTimersByTimeAsync(0)
@@ -379,7 +469,9 @@ describe('durable provider-neutral Bots engine', () => {
 
   it('backs off rate-limited polling and resets after success', async () => {
     const { engine, adapter } = fixture()
-    adapter.onPoll = async () => { throw new BotAdapterError('rate-limited', 'Wait before syncing.') }
+    adapter.onPoll = async () => {
+      throw new BotAdapterError('rate-limited', 'Wait before syncing.')
+    }
     await connect(engine)
     await vi.advanceTimersByTimeAsync(0)
     expect(adapter.polls).toHaveLength(1)
@@ -395,7 +487,9 @@ describe('durable provider-neutral Bots engine', () => {
   it('does not acknowledge failed persistence or send before a durable intent', async () => {
     const { engine, adapter, disk } = fixture()
     const input = await connect(engine)
-    disk.beforePut(async value => { if (value.messages.some(row => row.message.delivery === 'sending')) throw new Error('DO_NOT_LEAK_BACKEND') })
+    disk.beforePut(async value => {
+      if (value.messages.some(row => row.message.delivery === 'sending')) throw new Error('DO_NOT_LEAK_BACKEND')
+    })
     await expect(engine.send({ ...input, requestId: randomUUID(), text: 'not delivered' })).rejects.toThrow(STORAGE_FAILED)
     expect(adapter.sends).toHaveLength(0)
     expect(messages(engine, input)).toHaveLength(0)
@@ -403,10 +497,22 @@ describe('durable provider-neutral Bots engine', () => {
     await expect(engine.markRead({ ...input, throughMessageId: 'anything' })).rejects.toThrow(STORAGE_FAILED)
   })
 
+  it('rejects a malformed adapter page with a fixed safe error and no cursor advancement', async () => {
+    const { engine, adapter, store } = fixture()
+    adapter.onPoll = async () => ({ messages: [remote('', 'SYNTHETIC_BAD_PAGE_TEXT')], cursor: 'must-not-save', hasMore: false })
+    await connect(engine)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(engine.snapshot().connections[0]?.error).toBe('The adapter returned an unsupported message. Synchronization stopped without advancing the cursor.')
+    expect(store.read().messages).toHaveLength(0)
+    expect(store.read().bots[0]?.conversations[0]?.cursor).toBe('original-link')
+  })
+
   it('does not commit a receive cursor when messages fail to persist', async () => {
     const { engine, adapter, disk, store } = fixture()
     const input = await connect(engine)
-    disk.beforePut(async value => { if (value.messages.length > 0) throw new Error('backend fixture failure') })
+    disk.beforePut(async value => {
+      if (value.messages.length > 0) throw new Error('backend fixture failure')
+    })
     adapter.onPoll = async () => ({ messages: [remote('not-durable')], cursor: 'must-not-save', hasMore: false })
     await vi.advanceTimersByTimeAsync(0)
     expect(store.read().bots[0]?.conversations[0]?.cursor).toBe('original-link')
@@ -416,16 +522,28 @@ describe('durable provider-neutral Bots engine', () => {
 
   it.each([false, true])('deduplicates an evicted incoming user request ID and rejects changed-body replay (conflict=%s)', async conflict => {
     const { engine, adapter, store } = fixture()
-    const input = await connect(engine)
+    await connect(engine)
     const requestId = randomUUID()
-    adapter.onPoll = async () => ({ messages: [{ ...remote('external-user-original', 'external original body'), author: 'user', requestId }], cursor: 'external-user-linked', hasMore: false })
+    adapter.onPoll = async () => ({
+      messages: [{ ...remote('external-user-original', 'external original body'), author: 'user', requestId }],
+      cursor: 'external-user-linked',
+      hasMore: false,
+    })
     await vi.advanceTimersByTimeAsync(0)
     let index = 0
-    adapter.onPoll = async () => ({ messages: Array.from({ length: 100 }, () => remote(`external-history-${index++}`)), cursor: `external-history-page-${index}`, hasMore: index < 600 })
+    adapter.onPoll = async () => ({
+      messages: Array.from({ length: 100 }, () => remote(`external-history-${index++}`)),
+      cursor: `external-history-page-${index}`,
+      hasMore: index < 600,
+    })
     await vi.advanceTimersByTimeAsync(1600)
     expect(store.read().messages.some(row => row.message.remoteId === 'external-user-original')).toBe(false)
     const cursor = store.read().bots[0]!.conversations[0]!.cursor
-    adapter.onPoll = async () => ({ messages: [{ ...remote('external-user-new-remote-id', conflict ? 'conflicting changed body' : 'external original body'), author: 'user', requestId }], cursor: 'external-replay', hasMore: false })
+    adapter.onPoll = async () => ({
+      messages: [{ ...remote('external-user-new-remote-id', conflict ? 'conflicting changed body' : 'external original body'), author: 'user', requestId }],
+      cursor: 'external-replay',
+      hasMore: false,
+    })
     await vi.advanceTimersByTimeAsync(1000)
     expect(store.read().messages.some(row => row.message.remoteId === 'external-user-new-remote-id')).toBe(false)
     expect(engine.snapshot().connections[0]?.status).toBe(conflict ? 'error' : 'connected')

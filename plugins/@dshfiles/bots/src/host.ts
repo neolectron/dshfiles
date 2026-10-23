@@ -6,7 +6,7 @@ import { createBotAdapterRegistry } from '@dshfiles/bots/adapter'
 import type { BotAdapterRegistry } from './adapter.js'
 import { botsApi } from './api.js'
 import { BotsEngine } from './engine.js'
-import { botsDomain, createBotsStore } from './store.js'
+import { botsDomain, BotsStorage } from './store.js'
 
 interface OpenedBots {
   readonly engine: BotsEngine
@@ -20,17 +20,29 @@ const openBots = async (ctx: Context, registry: BotAdapterRegistry): Promise<Ope
   const storage = ctx.get('storageDomain')
   if (storage === undefined) throw new PluginApiError('Bot storage is unavailable.')
   let domain
-  try { domain = await storage.open(botsDomain) }
-  catch { throw new PluginApiError('Bot storage could not be opened safely.') }
+  try {
+    domain = await storage.open(botsDomain)
+  } catch {
+    throw new PluginApiError('Bot storage could not be opened safely.')
+  }
   let engine: BotsEngine
   try {
-    engine = new BotsEngine({ store: createBotsStore(domain.table('state')), registry })
+    engine = new BotsEngine({ store: BotsStorage.create(domain.table('state')), registry })
     await engine.start()
   } catch {
     await domain.close().catch(() => undefined)
     throw new PluginApiError('Bot storage could not be initialized safely.')
   }
-  return { engine, close: async () => { try { await engine.close() } finally { await domain.close() } } }
+  return {
+    engine,
+    close: async () => {
+      try {
+        await engine.close()
+      } finally {
+        await domain.close()
+      }
+    },
+  }
 }
 
 const openedFor = (ctx: Context, provided?: BotAdapterRegistry): Promise<OpenedBots> => {
@@ -45,8 +57,9 @@ const openedFor = (ctx: Context, provided?: BotAdapterRegistry): Promise<OpenedB
   return opening
 }
 const withEngine = async <Result>(ctx: Context, operation: (engine: BotsEngine) => Result | Promise<Result>): Promise<Result> => {
-  try { return await operation((await openedFor(ctx)).engine) }
-  catch (error) {
+  try {
+    return await operation((await openedFor(ctx)).engine)
+  } catch (error) {
     if (error instanceof PluginApiError) throw error
     // Unexpected adapter/framework failures must not reach even Host diagnostics with raw payloads or credentials.
     throw new PluginApiError('The bot operation could not be completed safely. Reconnect or retry explicitly.')
@@ -76,9 +89,13 @@ export default defineHost({
       // Failed initialization is retained and reported by every API call, rather than silently opening a new store.
       void opening.catch(() => undefined)
       return async () => {
-        try { await (await opening).close() }
-        catch { throw new PluginApiError('Bot workers or storage could not be closed safely.') }
-        finally { services.delete(registry) }
+        try {
+          await (await opening).close()
+        } catch {
+          throw new PluginApiError('Bot workers or storage could not be closed safely.')
+        } finally {
+          services.delete(registry)
+        }
       }
     }, 'bots: durable Host workers')
   },

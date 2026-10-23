@@ -1,6 +1,10 @@
 import type {} from '@deepseek-ai/cordis'
-import { botAdapterInfoSchema, type BotAdapterInfo, type BotIdentity } from './contract.js'
-export type { BotAdapterInfo, BotIdentity, BotCapabilities } from './contract.js'
+import type { z } from 'zod'
+import { botAdapterInfoSchema, type botCapabilitiesSchema, type botIdentitySchema } from './contract.js'
+
+export type BotAdapterInfo = z.infer<typeof botAdapterInfoSchema>
+export type BotIdentity = z.infer<typeof botIdentitySchema>
+export type BotCapabilities = z.infer<typeof botCapabilitiesSchema>
 
 /** Version-one neutral port. No provider payloads, credentials or UI components cross it. */
 export interface AdapterMessage {
@@ -45,10 +49,23 @@ export interface BotAdapter {
   validateConfig(config: Readonly<Record<string, string>>): void
   open(input: { readonly config: Readonly<Record<string, string>>; readonly signal: AbortSignal }): Promise<BotAdapterSession>
 }
-export type BotAdapterErrorCode = 'auth-required' | 'access-denied' | 'rate-limited' | 'unavailable' | 'identity-mismatch' | 'protocol-error' | 'delivery-unknown'
+export type BotAdapterErrorCode =
+  | 'auth-required'
+  | 'access-denied'
+  | 'rate-limited'
+  | 'unavailable'
+  | 'identity-mismatch'
+  | 'protocol-error'
+  | 'delivery-unknown'
 /** Only deliberately safe errors may be shown outside a provider adapter. */
 export class BotAdapterError extends Error {
-  constructor(readonly code: BotAdapterErrorCode, message: string) { super(message); this.name = 'BotAdapterError' }
+  constructor(
+    readonly code: BotAdapterErrorCode,
+    message: string,
+  ) {
+    super(message)
+    this.name = 'BotAdapterError'
+  }
 }
 export interface BotAdapterRegistry {
   register(adapter: BotAdapter): () => void
@@ -59,21 +76,37 @@ export interface BotAdapterRegistry {
 export const createBotAdapterRegistry = (): BotAdapterRegistry => {
   const adapters = new Map<string, BotAdapter>()
   const listeners = new Set<() => void>()
-  const notify = (): void => { for (const listener of listeners) listener() }
+  const notify = (): void => {
+    for (const listener of listeners) listener()
+  }
   return {
     register(adapter) {
       const info = botAdapterInfoSchema.parse(adapter.info)
       if (adapters.has(info.id)) throw new Error('Bot adapter identity is already registered.')
-      if (!Number.isSafeInteger(adapter.pollIntervalMs) || adapter.pollIntervalMs < 1000 || adapter.pollIntervalMs > 300000) throw new Error('Bot polling interval must be bounded between one second and five minutes.')
+      if (!Number.isSafeInteger(adapter.pollIntervalMs) || adapter.pollIntervalMs < 1000 || adapter.pollIntervalMs > 300000)
+        throw new Error('Bot polling interval must be bounded between one second and five minutes.')
       if (new Set(info.fields.map(field => field.key)).size !== info.fields.length) throw new Error('Bot adapter field keys must be unique.')
-      adapters.set(info.id, adapter); notify()
-      return () => { if (adapters.get(adapter.info.id) === adapter) { adapters.delete(adapter.info.id); notify() } }
+      adapters.set(info.id, adapter)
+      notify()
+      return () => {
+        if (adapters.get(adapter.info.id) === adapter) {
+          adapters.delete(adapter.info.id)
+          notify()
+        }
+      }
     },
     list: () => [...adapters.values()],
     get: id => adapters.get(id),
-    onChange(listener) { listeners.add(listener); return () => { listeners.delete(listener) } },
+    onChange(listener) {
+      listeners.add(listener)
+      return () => {
+        listeners.delete(listener)
+      }
+    },
   }
 }
 declare module '@deepseek-ai/cordis' {
-  interface Context { botAdapters: BotAdapterRegistry }
+  interface Context {
+    botAdapters: BotAdapterRegistry
+  }
 }

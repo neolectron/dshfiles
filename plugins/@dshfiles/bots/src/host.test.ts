@@ -18,9 +18,27 @@ const minimalAdapter = (): BotAdapter => ({
   validateConfig: () => undefined,
   open: async () => ({
     accountId: 'minimal-account',
-    bots: [{ remoteId: 'minimal-bot', name: 'Minimal bot', description: '', nativeUrl: null, capabilities: { text: true, attachments: false, approvals: false, activity: false }, conversations: [{ id: 'minimal-conversation', title: 'Conversation', historyScope: 'since-link', initialCursor: 'first-cursor' }] }],
+    bots: [
+      {
+        remoteId: 'minimal-bot',
+        name: 'Minimal bot',
+        description: '',
+        nativeUrl: null,
+        capabilities: { text: true, attachments: false, approvals: false, activity: false },
+        conversations: [{ id: 'minimal-conversation', title: 'Conversation', historyScope: 'since-link', initialCursor: 'first-cursor' }],
+      },
+    ],
     poll: async input => ({ messages: [], cursor: input.cursor, hasMore: false }),
-    send: async input => ({ id: `remote-${input.requestId}`, requestId: input.requestId, author: 'user', text: input.text, notice: null, nativeUrl: null, createdAt: 1, updatedAt: 1 }),
+    send: async input => ({
+      id: `remote-${input.requestId}`,
+      requestId: input.requestId,
+      author: 'user',
+      text: input.text,
+      notice: null,
+      nativeUrl: null,
+      createdAt: 1,
+      updatedAt: 1,
+    }),
     reconcile: async () => ({ kind: 'unknown' }),
     close: async () => undefined,
   }),
@@ -102,7 +120,13 @@ describe('Bots real Cordis/storageDomain Host boundary', () => {
       expect(restored.messages[0]?.id).toBe(sent.id)
       expect((await second.api.send(request)).id).toBe(sent.id)
       await expect(second.api.send({ ...request, text: 'Changed body' })).rejects.toThrow('different destination or message body')
-      const refused = await second.host.connection.requestApi({ packageId: '@dshfiles/bots', apiId: 'bots', method: 'remove', version: 1, input: { connectionId: connected.connections[0]!.id, confirm: false } })
+      const refused = await second.host.connection.requestApi({
+        packageId: '@dshfiles/bots',
+        apiId: 'bots',
+        method: 'remove',
+        version: 1,
+        input: { connectionId: connected.connections[0]!.id, confirm: false },
+      })
       expect(await refused.text()).toContain('error')
       expect((await second.api.snapshot()).connections).toHaveLength(1)
     } finally {
