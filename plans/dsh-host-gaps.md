@@ -96,6 +96,8 @@ owning plugin's README — this file is only the decision register.
 
 | 76 | Private login input on a generic RPC channel | bot-openai-dot | host | drop | Installed 0.2.1-rc.2 `rpc.handle` buffers up to 300 MiB and parses before the plugin handler; invalid-envelope failures may echo method/rpcId/issues. It cannot provide this flow's 8 KiB pre-parse and zero-echo guarantees. Stop that adapter; supported exact Fetch streaming routes already express the narrower policy. No core patch or weakened RPC fallback. Browser origin/basePath must be explicit trusted composition data, not guessed from the synthetic bridge URL. |
 
+| 77 | Network-confined human login browser | bot-openai-dot | host | upstream | Installed `dsh-sandbox` explicitly governs file effects, not network/process visibility (public contract lines14–17); subprocess lifecycle is not egress confinement. A real isolated fixture Chrome155 worker had seven non-loopback TCP sockets in its owned all-thread descendant tree despite fixed page interception/background flags. Stop production login-browser activation at this boundary. A reviewed deployment/container network policy and proof are required; no core patch, stealth, weaker allowlist or false browser-sandbox claim. Same-world nonce/loopback/PID evidence and in-memory JPEG succeeded, but real input/cleanup and provider authentication are not accepted. |
+
 ## Upstream tracker
 
 Reports the community already filed against the installed runtime. Read these

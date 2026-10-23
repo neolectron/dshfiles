@@ -62,6 +62,15 @@ A review caught and repaired cleanup failure allowing replacement while old brow
 
 The generic RPC alternative was **rejected**, not patched: installed native predispatch buffering and invalid-envelope echo cannot satisfy private input limits. Exact Fetch streaming already supports the required narrower contract; see the Host-gap decision register. No RPC credentials/frames path was implemented.
 
+## Native proof and actual deployment stop boundary
+
+- Genuine native signed-browser-cookie admission now passes in an isolated credentials store through public `connection.apply`/`HostConnectionService`. Forged/missing/wrong-value cookies, Host/Origin violations, genuine API-owner peer, cross-attempt/stale capability and streamed oversize/zero-echo cases are covered. This is not the physical HTTP bridge or provider sign-in.
+- The real scratch GUI exposed a native bridge incompatibility: streaming GET constructs a Fetch Request with a body and fails **before the route handler**. All five private operations now use bounded JSON POST; status/frame use strict `{}` and exact Origin checks. Do not weaken into 300 MiB buffered GET or patch core.
+- The real local browser proof positively established the same execution world using a fresh nonce file, owned helper PID ancestry and loopback reachability, and captured a genuine in-memory JPEG from managed Chrome155 with fresh profile/raw pipes.
+- Correct all-thread descendant inspection then observed **seven non-loopback TCP sockets** owned by the Chrome tree despite browser/page restrictions. The earlier main-thread-only zero count was incomplete and is withdrawn. Browser flags and Playwright routing are not OS network containment. Further login-browser probes were stopped.
+- Installed `dsh-sandbox` expressly excludes network/process visibility from its file-policy vocabulary. Production login activation must stop until an independently reviewed deployment-level egress policy is provisioned and proved. See Host-gap decision77; no core patch or bypass is permitted.
+- Actual input/form submission and factory cleanup have **not** passed. Cleanup sometimes remained unconfirmed; the proof owner waited for its entire fresh Host/native range to exit, identity-checked and reaped its own retained profile separately. That is not a successful factory cleanup acknowledgment.
+
 ## Resume
 
 Review the smallest viewer port and enrollment seam against these constraints. If the required confidentiality/egress/lifecycle policy cannot be expressed with supported plugin APIs or provisioned isolation, record the concrete unmet boundary in `plans/dsh-host-gaps.md` and stop there—never patch core or relax the policy. Keep the main completion plan open until actual authorized account use is verified.
