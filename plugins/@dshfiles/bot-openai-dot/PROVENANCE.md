@@ -19,6 +19,12 @@ No Go, Matrix bridge, daemon, dependency tree, proxy rotation, browser/cookie ex
 - Poll pages and reconciliation are bounded. Each poll checks at most one additional recent 32-message page for edits/deletions and deduplicates stable IDs; the versioned opaque polling cursor carries the recent anchor. Older edits beyond that horizon may remain stale. Reconciliation starts at the original persisted since-link checkpoint passed by the neutral Host; incomplete scans return `unknown` and must not justify a duplicate send.
 - Unsupported attachments/elicitation become a safe notice and fixed native ChatGPT handoff. Inline approvals and media are not capabilities.
 
+## Fixture-only human viewer port
+
+The new authentication attempt/transport/viewer/worker sources are **unwired, source/fixture-only**. They do not implement or prove production sign-in or credential capture. Reviewed pixel-coordinate and keyboard/IME mechanics are narrowly ported from MIT `drscrewdriver/dsh-browser-cdp` at `da9891b9c8ee64b6c4da16d3ae654d0f1166cccd`; the complete original notice, exact hashes, excluded unsafe subsystems and update policy are in [NOTICE.md](NOTICE.md). Never install its general browser bundle or reuse its cookie-presence authentication, profile import/discovery, control listener, tools or teardown.
+
+The managed worker currently accepts only an explicit synthetic local fixture policy, disables JavaScript and requires positive execution-world evidence. That is deliberately not a usable ChatGPT authentication policy. Real native admission, browser rendering, privacy/egress, diagnostics and full-range cleanup remain separate proof gates.
+
 ## Updates
 
 No runtime upstream fetches or automatic protocol updates. A maintainer must review changes against this exact pin, deliberately change the pin/source mapping, preserve the full license and attribution, update local fixtures for request/identity/auth/cursor behavior, run package test/typecheck/build/import checks, and obtain separate explicit authorization before any real-account validation. Upstream features never silently expand this adapter's advertised capabilities. Challenge or schema changes fail closed rather than starting circumvention. Distributing modified source/bundles requires following the AGPL, including applicable corresponding-source/network-use obligations; keep this package's source available with deployments.

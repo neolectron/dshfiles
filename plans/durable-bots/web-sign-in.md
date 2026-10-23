@@ -52,6 +52,16 @@ The existing adapter is reference-only, not an onboarding API. Any new enrollmen
 - Fake-pair commit, ownership/account mismatch and ambiguous publication preserve the existing guarantees.
 - Only then may the user enter real credentials in the GUI and complete the separately authorized real-Dot test. A public-page probe or fixture pass is never the final acceptance evidence.
 
+## Source/fixture milestone
+
+Implemented but **not wired to production**: a bounded ephemeral attempt manager, browser-only exact Fetch routes, a private raster/input viewer with a native Fetch adapter, and a fixture-only managed browser factory. Root and mounted paths use explicit trusted deployment origin/basePath, not private bootstrap/path guesses. The UI receives only private raster/status; no general browser/CDP/JS/address/profile tool was added.
+
+The complete Dot package passed **203 tests**, strict typecheck, build, plain Node Host import and source AST rules. The new tests use synthetic browser/runtime/admission boundaries, not a real authenticated carrier or real browser rendering. Scoped lint corrections are part of this milestone, not evidence of live authentication.
+
+A review caught and repaired cleanup failure allowing replacement while old browser quiescence was unconfirmed: cancellation now revokes immediately, returns a fixed failure and prevents a second attempt. Text bounds are shared, including UTF-8 bytes; input is serialized without retries; frame rate/size and streamed bodies are bounded.
+
+The generic RPC alternative was **rejected**, not patched: installed native predispatch buffering and invalid-envelope echo cannot satisfy private input limits. Exact Fetch streaming already supports the required narrower contract; see the Host-gap decision register. No RPC credentials/frames path was implemented.
+
 ## Resume
 
 Review the smallest viewer port and enrollment seam against these constraints. If the required confidentiality/egress/lifecycle policy cannot be expressed with supported plugin APIs or provisioned isolation, record the concrete unmet boundary in `plans/dsh-host-gaps.md` and stop there—never patch core or relax the policy. Keep the main completion plan open until actual authorized account use is verified.

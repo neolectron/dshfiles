@@ -14,6 +14,7 @@
     "README.md",
     "LICENSE",
     "PROVENANCE.md",
+    "NOTICE.md",
     "dshx.features.json"
   ],
   "type": "module",
@@ -33,15 +34,24 @@
   "dependencies": {
     "@dshfiles/bots": "workspace:*",
     "@dshfiles/credential-port": "workspace:*",
+    "@dshfiles/plugin-ui": "workspace:*",
     "@dshfiles/secret-catalog": "workspace:*",
+    "playwright-core": "1.56.1",
+    "react": "catalog:",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "catalog:",
     "@deepseek-ai/dsh": "0.2.1-rc.2",
+    "@deepseek-ai/dsh-client-connection": "catalog:",
+    "@deepseek-ai/dsh-subprocess": "catalog:",
     "@deepseek-ai/dsh-tools": "catalog:",
     "@dshfiles/dshx": "workspace:*",
     "@types/node": "catalog:",
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
+    "jsdom": "catalog:",
+    "react-dom": "catalog:",
     "typescript": "catalog:",
     "vitest": "catalog:"
   },
