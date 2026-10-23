@@ -1,0 +1,57 @@
+# Web-GUI-only Dot sign-in: implementation gate
+
+## Human decisions
+
+The user requires the entire sign-in experience inside this DSH Web GUI, without a desktop helper or token hunting. They explicitly authorized broad ChatGPT-account linking and exactly **DSH connection test — please reply OK**. Existing browser/profile inspection, automated challenge bypass and additional messages are not authorized.
+
+## Fresh evidence
+
+- Managed Chrome **155.0.8059.79** with installed Playwright **1.56.1** connected over CDP in a newly created private profile.
+- Renderer sandbox was confirmed: Seccomp=2, NoNewPrivs=1 and a user namespace distinct from the browser; no `--no-sandbox`.
+- The first and only public document request to `https://chatgpt.com/auth/login` returned **403**. The page was closed immediately; there was no input, authentication/session API call, cookie/storage inspection, challenge interaction, screenshot or message. This does not establish whether a human could complete a legitimately presented challenge.
+- All 15 tracked owned process identities exited and the temporary profile was removed.
+- The existing GUI still returned **401** to an unauthenticated, body-discarded health request. No restart occurred. `lsof` was unavailable; no process attribution was inferred from that failed command.
+
+**The local browser primitive works; authenticated sign-in does not yet have a working proof.** Never turn this probe into a claim that the user's account linked successfully.
+
+## Adopt / port decision
+
+No safe turnkey installed viewer was found. A narrow **port**, not wholesale adoption, is the current candidate:
+
+- [dsh-browser-cdp 1.6.0](https://github.com/drscrewdriver/dsh-browser-cdp), MIT, pinned `da9891b9c8ee64b6c4da16d3ae654d0f1166cccd`: reuse only reviewed pixel/input/IME mechanics. Keep license, exact source/hash provenance, exclusions and update policy.
+- Do **not** reuse its cookie-name-only admission, unauthenticated control listener, persisted browser discovery/profile import, raw CDP/JS/HTTP tools, inherited environment or fire-and-forget teardown.
+- [Browserless LiveURL](https://docs.browserless.io/baas/monitor-sessions/embedding-live-url) needs separately verified deployment/licensing and would introduce another credential/frame operator if hosted. No cloud service is authorized.
+- [noVNC](https://novnc.com/info.html) is maintained but requires currently absent display/VNC/bridge infrastructure. It is not an installed zero-dependency alternative.
+
+This is conditional design, not permission to skip the security or provider gates below.
+
+## Supported seams, not a core patch
+
+Installed DSH 0.2.1-rc.2 exposes authenticated exact plugin routes through `connection.fetch.register`, native Host/Origin admission, byte responses, managed subprocess pipes/control, abort/terminate/wait and an authenticated client connection. A plugin-level implementation is possible; there is no demonstrated missing core binary-transport operation.
+
+Native `browserPeer` is shared by all authenticated browsers, not a per-person identity. An originating-tab capability can prevent accidental cross-tab takeover but cannot create tenant isolation or protect from trusted same-UID Host code. Keep the existing shared-owner disclosure.
+
+The existing adapter is reference-only, not an onboarding API. Any new enrollment seam must remain owned/provider-neutral and preserve Core account/bot/room validation and explicit vault permission. Do not expose a general browser API in Bots to implement one concrete authentication flow.
+
+## Required implementation boundaries
+
+1. One bounded attempt, one controlling tab, a fresh empty profile and fixed provider login entry. No profile reuse/import, arbitrary target/address selection, desktop access, file chooser/upload/download, clipboard export, extension or developer-console control.
+2. Native owner + Host/Origin admission, an ephemeral high-entropy attempt capability kept only in originating UI memory, bounded/ordered input, stale-generation rejection and immediate capability revocation on cancel. No bearer URL/query, global frame list or replay/fanout.
+3. Pixels and human keyboard/text input travel only over a private authenticated UI transport. Never make them Agent tools, conversation events, telemetry, HAR/video/traces, logs or browser persistence. Status/start/cancel may expose sanitized state; never cookies, session JSON or raw token pairs.
+4. Managed worker owns all browser descendants. Minimal environment, sandbox enabled, no stealth/UA impersonation/proxy rotation/challenge solving. Temporary isolation is not proof of network/file confinement: prove provider navigation/request/popup/worker/WebSocket/internal-scheme and egress restrictions before accepting real login input.
+5. Stop or surface a legitimate provider denial/challenge without bypass. The observed public 403 remains unresolved; do not retry it by disguising automation or claim it proves every human path impossible.
+6. Collect a pair only from this freshly owned authenticated context after explicit human completion. Validate identity, account and intended Dot, write through the Host-only owned vault contract, and publish references only. No unsupported claims about atomic provider/vault transactions or rollback.
+7. Cancel, viewer disappearance, TTL, crash, mismatch, relink and Host disposal revoke the attempt before bounded full-process teardown. Wait for quiescence and remove only verified owned temporary paths. Late values cannot publish; accepted write ambiguity must be honest.
+
+## Proof before real input
+
+- Synthetic login fixture proves display, click/keyboard/IME/paste, scaling/focus and zero canary leakage into tools/logs/storage.
+- Missing/forged auth, foreign Origin, non-owner peer, cross-attempt replay and stale generation fail.
+- Private/internal/file navigation, popups, worker/socket paths and general CDP access are denied; browser sandbox stays enabled.
+- Cancel/disconnect/TTL/crash/disposal close input/frames and reap the entire owned range.
+- Fake-pair commit, ownership/account mismatch and ambiguous publication preserve the existing guarantees.
+- Only then may the user enter real credentials in the GUI and complete the separately authorized real-Dot test. A public-page probe or fixture pass is never the final acceptance evidence.
+
+## Resume
+
+Review the smallest viewer port and enrollment seam against these constraints. If the required confidentiality/egress/lifecycle policy cannot be expressed with supported plugin APIs or provisioned isolation, record the concrete unmet boundary in `plans/dsh-host-gaps.md` and stop there—never patch core or relax the policy. Keep the main completion plan open until actual authorized account use is verified.
