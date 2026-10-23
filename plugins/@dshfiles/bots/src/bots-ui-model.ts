@@ -73,7 +73,7 @@ export class BotsUiModel {
   }
 
   static connectDefaults(adapter: BotAdapterInfo) {
-    return { label: adapter.name, fields: adapter.fields.map(field => ({ value: '', key: field.key })), accepted: false }
+    return { label: adapter.name, fields: adapter.fields.map(field => ({ value: '', key: field.key })), accepted: false, manageCredentials: false }
   }
 
   /** Metadata decides the form; a provider cannot turn a reference field into a raw-token input. */
@@ -82,6 +82,7 @@ export class BotsUiModel {
       .object({
         label: z.string().trim().min(1, 'Name this connection.').max(100),
         fields: z.array(z.object({ value: z.string().max(4096), key: z.string() })),
+        manageCredentials: z.boolean(),
         accepted: z.boolean().refine(value => value, 'Accept the displayed risks before connecting.'),
       })
       .superRefine((value, context) => {
@@ -103,12 +104,14 @@ export class BotsUiModel {
 
   static connectInput(adapter: BotAdapterInfo, value: BotConnectForm): BotConnectInput {
     const parsed = BotsUiModel.connectFormSchema(adapter).parse(value)
-    return {
+    const input: BotConnectInput = {
       adapterId: adapter.id,
       label: parsed.label,
       config: Object.fromEntries(parsed.fields.map(field => [field.key, field.value.trim()])),
       acceptRisks: true,
     }
+    if (adapter.credentialManagement !== undefined) input.manageCredentials = parsed.manageCredentials === true
+    return input
   }
 
   static chronologicalMessages(messages: readonly BotMessage[]): BotMessage[] {

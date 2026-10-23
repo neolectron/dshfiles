@@ -65,4 +65,43 @@ describe('Bots connect dialog', () => {
     fireEvent.click(consent)
     await waitFor(() => expect(submit.hasAttribute('disabled')).toBe(true))
   })
+
+  it('leaves the optional additional vault grant unchecked and submits manual mode by default', async () => {
+    const onConnect = vi.fn()
+    const managed = { ...adapter, credentialManagement: { label: 'Allow synthetic vault saves', description: 'Synthetic management capability.' } }
+    render(<BotsConnectDialog adapters={[managed]} failed={false} onClose={vi.fn()} onConnect={onConnect} pending={false} />)
+    const grant = screen.getByRole('checkbox', { name: 'Allow synthetic vault saves' })
+    expect(grant.getAttribute('aria-checked')).toBe('false')
+    fireEvent.change(screen.getByRole('textbox', { name: /Endpoint label/ }), { target: { value: 'test' } })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'I understand and accept these connection risks' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Connect existing bot' }))
+    await waitFor(() => expect(onConnect).toHaveBeenCalledTimes(1))
+    expect(onConnect.mock.calls[0]?.[0].manageCredentials).toBe(false)
+  })
+
+  it('sends the additional vault grant only when explicitly selected and resets it on adapter changes', async () => {
+    const onConnect = vi.fn()
+    const metadata = { label: 'Allow synthetic vault saves', description: 'Synthetic management capability.' }
+    render(
+      <BotsConnectDialog
+        adapters={[
+          { ...adapter, credentialManagement: metadata },
+          { ...adapter, id: 'second', name: 'Second', credentialManagement: metadata },
+        ]}
+        failed={false}
+        onClose={vi.fn()}
+        onConnect={onConnect}
+        pending={false}
+      />,
+    )
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Allow synthetic vault saves' }))
+    fireEvent.change(screen.getByRole('combobox', { name: 'Provider adapter' }), { target: { value: 'second' } })
+    expect(screen.getByRole('checkbox', { name: 'Allow synthetic vault saves' }).getAttribute('aria-checked')).toBe('false')
+    fireEvent.change(screen.getByRole('textbox', { name: /Endpoint label/ }), { target: { value: 'test' } })
+    fireEvent.click(screen.getByRole('checkbox', { name: 'I understand and accept these connection risks' }))
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Allow synthetic vault saves' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Connect existing bot' }))
+    await waitFor(() => expect(onConnect).toHaveBeenCalledTimes(1))
+    expect(onConnect.mock.calls[0]?.[0].manageCredentials).toBe(true)
+  })
 })

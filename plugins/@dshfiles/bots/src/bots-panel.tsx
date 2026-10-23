@@ -19,6 +19,8 @@ import { cn } from '@dshfiles/plugin-ui/lib/utils'
 import { useMutation, useQuery, useQueryClient } from '@dshfiles/plugin-ui/query'
 import { useId, useState, useSyncExternalStore } from 'react'
 import { botsApi } from './api.js'
+import type { BotAdapterInfo } from '@dshfiles/bots/adapter'
+import { BotsCredentialManagement } from './bots-credential-management.js'
 import { BotsConnectDialog } from './bots-connect-dialog.js'
 import { BotsConversationViewport } from './bots-conversation-viewport.js'
 import { botDrafts, BotsUiModel } from './bots-ui-model.js'
@@ -338,6 +340,7 @@ const Conversation = (props: {
 }
 
 const BotDetail = (props: {
+  readonly adapter: BotAdapterInfo | undefined
   readonly api: BotsClient
   readonly bot: BotView
   readonly connection: BotConnection | undefined
@@ -350,7 +353,12 @@ const BotDetail = (props: {
   const id = useId()
   return (
     <section aria-label={`${props.bot.identity.name} details`} className="dshx:flex dshx:h-full dshx:min-h-0 dshx:min-w-0 dshx:flex-col">
-      <header className="dshx:space-y-4 dshx:border-b dshx:p-5 dshx:@max-pane-narrow:p-3">
+      <header
+        aria-label="Bot connection details"
+        className="dshx:max-h-[40%] dshx:shrink-0 dshx:space-y-4 dshx:overflow-y-auto dshx:overscroll-contain dshx:border-b dshx:p-5 dshx:@max-pane-narrow:p-3"
+        role="region"
+        tabIndex={0}
+      >
         <Button className="dshx:hidden dshx:@max-pane-compact:inline-flex" onClick={props.onBack} size="sm" variant="ghost">
           <ArrowLeftIcon aria-hidden />
           Back to bots
@@ -380,7 +388,12 @@ const BotDetail = (props: {
             {props.connection.error}
           </p>
         )}
-        {props.connection !== undefined && <ConnectionButtons busy={props.busy} connection={props.connection} onAction={props.onAction} />}
+        {props.connection !== undefined && (
+          <>
+            <ConnectionButtons busy={props.busy} connection={props.connection} onAction={props.onAction} />
+            <BotsCredentialManagement api={props.api} connection={props.connection} adapter={props.adapter} busy={props.busy} />
+          </>
+        )}
         <div className="dshx:flex dshx:flex-wrap dshx:items-center dshx:gap-2">
           <label className="dshx:text-xs dshx:font-medium dshx:text-muted-foreground" htmlFor={id}>
             Conversation
@@ -579,6 +592,12 @@ export const BotsPanel = (): JSX.Element => {
                   )}
                   <p className="dshx:text-xs dshx:text-muted-foreground">No bot identity is available for this connection.</p>
                   <ConnectionButtons busy={busy} connection={connection} onAction={onAction} />
+                  <BotsCredentialManagement
+                    api={api}
+                    connection={connection}
+                    adapter={snapshot.adapters.find(adapter => adapter.id === connection.adapterId)}
+                    busy={busy}
+                  />
                 </section>
               ))}
           </aside>
@@ -595,6 +614,7 @@ export const BotsPanel = (): JSX.Element => {
               </div>
             ) : (
               <BotDetail
+                adapter={snapshot?.adapters.find(adapter => adapter.id === selected.provider)}
                 api={api}
                 bot={selected}
                 busy={busy}

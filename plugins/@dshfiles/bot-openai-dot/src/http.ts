@@ -27,17 +27,19 @@ const fail = (code: keyof typeof messages): BotAdapterError => new BotAdapterErr
 const permittedPath =
   /^(?:\/api\/auth\/session|\/backend-api\/(?:tbo\/primary|tbo\/by-thread\/[^/?#]+|messaging\/rooms\/[^/?#]+(?:\/messages(?:\?limit=(?:1|32)(?:&after=[^&#]*)?)?)?))$/u
 
-/** All mutable credentials stay in this Host lifetime; never written to disk, vault, logs or public output. */
+/** Host-only credentials; optional explicitly granted persistence stays behind a provider-owned port. */
 export class DotHttp {
   readonly identity: Identity
   private credentials: Credentials
   private refreshing: Promise<void> | undefined
   private expires: number
   private readonly lifetime = new AbortController()
+  private failed = false
   constructor(
     credentials: Credentials,
     private readonly fetcher: HttpFetch,
     private readonly now: () => number,
+    private readonly lifecycle?: { assertActive(): void; renewed(pair: Credentials): Promise<void> },
   ) {
     this.credentials = { ...credentials }
     this.identity = decodeIdentity(credentials.accessToken)
@@ -52,6 +54,7 @@ export class DotHttp {
     if (!value || value.length > 32768 || DotCharacterPolicy.hasForbiddenAscii(value) || value.includes(';') || value.includes(',')) throw fail('auth-required')
   }
   private async request<T>(path: string, schema: z.ZodType<T>, signal: AbortSignal, body?: DotSendBody): Promise<T> {
+    this.assertActive(signal)
     const target = `https://chatgpt.com${path}`
     if (!permittedPath.test(path) || new URL(target).href !== target) throw fail('protocol-error')
     const renewal = path === '/api/auth/session'
@@ -77,7 +80,9 @@ export class DotHttp {
         headers,
       }
       if (body !== undefined) request.body = JSON.stringify(body)
+      this.assertActive(signal)
       const response = await this.fetcher(target, request)
+      this.assertActive(signal)
       if (response.redirected || (response.status >= 300 && response.status < 400)) {
         await response.body?.cancel()
         throw fail(sending ? 'delivery-unknown' : 'access-denied')
@@ -102,7 +107,9 @@ export class DotHttp {
       try {
         for (;;) {
           boundedSignal.throwIfAborted()
+          this.assertActive(signal)
           const result = await reader.read()
+          this.assertActive(signal)
           if (result.done) break
           length += result.value.byteLength
           if (length > limit) {
@@ -128,7 +135,12 @@ export class DotHttp {
       throw fail(sending ? 'delivery-unknown' : 'unavailable')
     }
   }
+  private assertActive(signal: AbortSignal): void {
+    if (this.failed || signal.aborted || this.lifetime.signal.aborted) throw fail('unavailable')
+    this.lifecycle?.assertActive()
+  }
   private async refresh(signal: AbortSignal): Promise<void> {
+    this.assertActive(signal)
     if (!this.refreshing) {
       this.refreshing = (async () => {
         const renewed = await this.request('/api/auth/session', renewalSchema, signal)
@@ -143,7 +155,16 @@ export class DotHttp {
         }
         this.validateSession(renewed.sessionToken)
         if (signal.aborted || this.lifetime.signal.aborted) throw fail('unavailable')
-        this.credentials = { accessToken: renewed.accessToken, sessionToken: renewed.sessionToken }
+        const pair = { accessToken: renewed.accessToken, sessionToken: renewed.sessionToken }
+        try {
+          await this.lifecycle?.renewed(pair)
+          this.assertActive(signal)
+        } catch (error) {
+          this.failed = true // No blind provider refresh or message POST after local commit failure.
+          if (error instanceof BotAdapterError) throw error
+          throw fail('auth-required')
+        }
+        this.credentials = pair
         this.expires = identity.expires
       })().finally(() => {
         this.refreshing = undefined
@@ -152,6 +173,7 @@ export class DotHttp {
     await this.refreshing
   }
   async api<T>(path: string, schema: z.ZodType<T>, signal: AbortSignal, body?: DotSendBody): Promise<T> {
+    this.assertActive(signal)
     if (this.expires < this.now() + 300000) await this.refresh(signal)
     const access = this.credentials.accessToken
     try {

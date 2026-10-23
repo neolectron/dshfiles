@@ -55,6 +55,10 @@ export function apply(ctx) {
       name: 'Fixture provider',
       description: 'Scratch-only provider proving adapter substitution without OpenAI.',
       risk: 'Synthetic local test data only. No external account or credentials are used.',
+      credentialManagement: {
+        label: 'Allow synthetic credential saves',
+        description: 'Exercise only the synthetic permission lifecycle; no vault is accessed.',
+      },
       fields: [{ key: 'endpointLabel', label: 'Endpoint label', kind: 'text', required: true, help: 'Enter test for the isolated synthetic provider.' }],
     },
     pollIntervalMs: 1000,
@@ -85,6 +89,11 @@ export function apply(ctx) {
             ],
           },
         ],
+        async bindCredentialReferences({ publish, signal: managementSignal }) {
+          check(managementSignal)
+          publish.assertActive()
+          // This is a consent/dispatch fixture, not a pretend vault implementation.
+        },
         poll(input) {
           return serial(async () => {
             check(input.signal)

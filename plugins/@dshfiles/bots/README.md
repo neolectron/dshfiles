@@ -13,7 +13,7 @@ A first-class workspace for **existing, long-lived remote bots**. Open **Bots** 
 1. Install and enable a compatible bot adapter. Without one, the roster is honestly empty and **Connect bot** explains that adapters are unavailable.
 2. Choose **Connect bot**, select a provider adapter and name the connection.
 3. Fill the fields the adapter declares. Credential fields accept only `secret:ALIAS` or `secret:ALIAS@ENV`, with the shared vault-reference binding. **Never paste a raw token.** The Host resolves references; the browser never receives a credential value.
-4. Read the adapter's risk disclosure and explicitly accept it. Connecting links the remote identity the adapter discovers, not a new bot.
+4. Read the adapter's risk disclosure and explicitly accept it. Connecting links the remote identity the adapter discovers, not a new bot. If supported, a **separate, initially unchecked** optional checkbox grants managed credential-reference updates; leave it unchecked to keep manual references.
 5. Select a bot and its provider conversation. Send with **Send** or Enter; Shift+Enter adds a line. Only the typed message is sent—no private DSH thread context is attached.
 
 The roster shows identity, provider, unread count and connection health. Remote activity is separate: **Activity unknown** does not mean idle, stopped or unhealthy. The detail pane shows last sync, local history scope and a validated original-app handoff when the adapter supplies one.
@@ -32,6 +32,35 @@ At narrow container widths the roster and detail are separate views. **Back to b
 - Messages render as React text, never raw HTML. Unsupported attachments/approvals are notices, not actions. Native handoff links must be credential-free HTTPS URLs supplied by the adapter; invalid links are not rendered.
 
 The provider conversation remains canonical. A **Local cache since linking** disclosure means exactly that—not a full historical import. The client pages a bounded cache and makes no claim to provider features that its adapter cannot support.
+
+## Optional managed credential references
+
+![Separate unchecked credential-management consent](docs/screenshots/credential-management-consent.png)
+
+_Real scratch GUI with adapter metadata only; no account connection or vault write._
+
+Manual reference mode remains the default, including connections saved before this capability existed. An adapter may advertise `info.credentialManagement: { label, description }`. Its connect checkbox is an **additional vault-management grant**, independent of connection-risk consent; connection risk acceptance alone never enables management.
+
+In a bot's detail pane (or an unverified connection's card), **Enable credential management…** opens a consent dialog with an initially unchecked grant. **Revoke credential management** does not require another confirmation. The shared `setCredentialManagement({ connectionId, enabled, acceptRisks? })` API and `bots_set_credential_management` tool expose the same action: enabling requires advertised support and explicit `acceptRisks: true`; both tools and UI require the user's additional vault grant. Revocation remains available if the adapter is missing. An enabled connection restarts its worker to invalidate old callbacks; a disconnected connection stays disconnected. References, credentials, cached history and drafts are retained.
+
+Revocation stops **new** saves; a vault call already accepted by another owner may finish. It is not a provider/vault transaction or a promise of rollback. Bots neither reads nor writes raw credential values: provider adapters own those operations through their separately granted capabilities.
+
+After verifying and durably persisting the same account, bot and conversation continuity, Core may call the session's optional `bindCredentialReferences({ connectionId, publish, signal })`. `open` receives the optional `connectionId` (Core always supplies it); neither API exposes a publisher in manual mode. The binding signal lasts for the worker's lease, including after binding completes. Core stays **Connecting** until binding and its started reference publications are durable, then schedules synchronization.
+
+The built public `@dshfiles/bots/adapter` module owns these exact neutral types:
+
+```ts
+interface BotCredentialReferenceUpdate {
+  readonly previous: Readonly<Record<string, string>>
+  readonly next: Readonly<Record<string, string>>
+}
+interface BotCredentialReferencePublisher {
+  assertActive(): void
+  replace(update: BotCredentialReferenceUpdate): Promise<void>
+}
+```
+
+Both maps are the **full configuration**, not partial reference patches. `assertActive` guards the current worker/session, account and grant before an adapter starts new vault work. `replace` rechecks that lease inside the serialized store mutation, validates both maps and atomically compares/replaces the expected full map. Only canonical references in declared secret-reference fields may change; non-secret values and keysets cannot change. Both references commit in one Core row. An already-committed identical retry succeeds; a different stale expected map fails. A successful durable commit is not subsequently reported as cancelled, so adapters must not discard ownership of its committed aliases. No cross-provider or Core/vault transaction is implied.
 
 ## Ownership and availability
 
@@ -69,6 +98,8 @@ This capture has no credentials and does not authenticate an account. Both bundl
 - [UI helper tests](src/bots-ui-model.test.ts): metadata-driven forms, explicit risk consent, canonical reference validation, provider substitution, bot/conversation draft isolation, original retry UUID/body, stale completion rejection, safe handoff URLs and chronological projection.
 - [Connection dialog DOM tests](src/bots-connect-dialog.test.tsx): valid fields followed by explicit consent enable immediate submission without an extra blur; revoking consent disables submission again.
 - [Conversation viewport DOM tests](src/bots-conversation-viewport.test.tsx): initial/near-bottom following, preserved older reading, explicit jump, pane/composer resizing and older-page behavior.
+- [Credential lifecycle tests](src/credential-lifecycle.test.ts): manual-mode migration/defaults, explicit grants, post-continuity binding, durable two-reference CAS, canonical-map rejection, idempotent retries, stale/cancelled/revoked callbacks, storage failure and accepted-commit acknowledgment.
+- [Credential permission DOM tests](src/bots-credential-management.test.tsx): fresh unchecked enable consent, cancellation/reset, explicit grant API dispatch and revoke without deletion or another consent prompt.
 - [Query policy tests](src/bots-queries.test.ts): abort-signal forwarding, cache-key isolation, bounded refetch intervals and missing-owner polling/retry shutdown.
 - [Browser journeys](../../../tooling/dshx/e2e/features/bots.feature): empty/no-adapter workspace; two-reference adapter metadata without real account linking; scratch-only synthetic adapter exercising connect, send/echo, unsolicited incoming messages, draft navigation, 360/480 px container Back navigation, disconnect/reconnect without resend, and explicit local removal.
 - [Feature catalog](dshx.features.json): `bots-workspace` and `connect-bot`, with exact journey IDs, states, failure boundaries and supported scratch reaches.

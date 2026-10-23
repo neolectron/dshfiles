@@ -6,6 +6,12 @@
       "id": "verified-dot-messaging",
       "title": "Existing OpenAI Dot text adapter (unofficial)",
       "summary": "A Host-only, separately AGPL-3.0-only adapter registers on the neutral v1 Bots registry, links the existing primary Dot through exact account-bound DM discovery, polls since-link text updates every three seconds and reconciles stable UUID sends without duplicating unknown delivery.",
+      "reach": [
+        "click button \"Bots\"",
+        "click button \"Connect bot\"",
+        "hover region \"Optional credential management\"",
+        "expect checkbox \"Keep Dot credentials renewed in the vault\""
+      ],
       "surfaces": ["host"],
       "configuration": [
         {
@@ -17,7 +23,7 @@
         {
           "key": "sessionTokenRef",
           "defaultValue": "",
-          "constraints": "Required canonical renewable session secret reference; no raw value, extraction or automatic vault write.",
+          "constraints": "Required canonical renewable session reference; same canonical access/session reference can denote one validated owner/account-bound session bundle. Managed writes require a separate explicit Core grant after durable identity verification.",
           "coveredBy": ["bot-openai-dot.registry-and-capabilities", "bot-openai-dot.session-renewal"]
         }
       ],
@@ -26,6 +32,9 @@
         "reference-unresolved",
         "discovering",
         "identity-verified",
+        "managed-grant-pending",
+        "managed-bundle-active",
+        "managed-commit-stopped",
         "since-link",
         "polling",
         "sent",
@@ -41,7 +50,7 @@
         "403 or provider browser challenge stops without bypass, impersonation, proxy rotation or browser extraction.",
         "Nonadvancing or malformed pagination retains the checkpoint; an incomplete reconciliation scan is unknown, not absent.",
         "Transport failure, malformed send acknowledgment or mismatched sender/request identity never justifies a new automatic POST.",
-        "Renewal must preserve account, user and account-user mapping. Rotated credentials remain memory-only and reconnect resolves the original vault references again.",
+        "Renewal preserves account/user/mapping. Default is memory-only and zero vault writes. Explicit managed grant creates one fresh global bundle and atomically publishes both references; reconnect/renewal reuse that whole scalar. Owner/generation/readback conflicts stop operation. No backend CAS, cross-host sharing, destructive cleanup or claimed rollback; provider/local crash windows may require reauthorization.",
         "Unsupported media or elicitation yields a safe notice/native ChatGPT handoff; no attachments, inline approvals, activity or WebSocket capability is advertised."
       ],
       "externalDependencies": [
@@ -54,6 +63,11 @@
           "id": "https://chatgpt.com private messaging and auth endpoints",
           "boundary": "Fixed HTTPS path allowlist only; redirects rejected, 15-second request timeout, bounded response bodies and zod decoding; broad credentials stay in Host memory.",
           "deterministicFake": "tests/adapter.test.ts exercises discovery, send, pagination, auth renewal, identity changes and error redaction with local Response fixtures."
+        },
+        {
+          "id": "@dshfiles/secret-catalog/api v1",
+          "boundary": "Public in-process Host create/update scalar API only, with values on stdin. One global managed bundle per connection; no reveal RPC, no backend CAS/cross-host sharing and no deletion.",
+          "deterministicFake": "tests/credentials.test.ts injects a memory-only DotCredentialStore and scripted HTTP boundary; no vault, authenticated account, browser, profile or network access."
         },
         {
           "id": "@dshfiles/credential-port and @dshfiles/bots/adapter v1",
@@ -114,6 +128,24 @@
           "id": "bot-openai-dot.response-bounds",
           "file": "plugins/@dshfiles/bot-openai-dot/tests/adapter.test.ts",
           "testName": "bounds malformed JSON, advertised length and streaming bodies without exposing payloads"
+        },
+        {
+          "kind": "unit-test",
+          "id": "bot-openai-dot.managed-bundle-restart",
+          "file": "plugins/@dshfiles/bot-openai-dot/tests/credentials.test.ts",
+          "testName": "reads a bundle once and renews/restarts on the same single item without another publication"
+        },
+        {
+          "kind": "unit-test",
+          "id": "bot-openai-dot.managed-grant-default",
+          "file": "plugins/@dshfiles/bot-openai-dot/tests/credentials.test.ts",
+          "testName": "defaults to memory-only without bind, even when a store is injected"
+        },
+        {
+          "kind": "unit-test",
+          "id": "bot-openai-dot.managed-write-stop",
+          "file": "plugins/@dshfiles/bot-openai-dot/tests/credentials.test.ts",
+          "testName": "stops a send before POST and never blindly repeats renewal after a managed write failure"
         },
         {
           "kind": "unit-test",

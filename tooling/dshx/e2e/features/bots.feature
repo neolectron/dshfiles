@@ -1,4 +1,4 @@
-@bots
+@bots @fake-secret-cli
 Feature: Existing durable bots in a global workspace
   Bots are remote durable identities, not native DSH Sessions or model presets.
 

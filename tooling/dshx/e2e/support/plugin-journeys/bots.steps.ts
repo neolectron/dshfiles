@@ -61,6 +61,7 @@ Then('the bot adapter form uses two secret references and explicit risk acceptan
     await expect(references).toHaveCount(2)
     await expect(dialog.getByRole('combobox', { name: 'Provider adapter', exact: true })).toContainText('OpenAI Dot (unofficial)')
     await expect(dialog.getByRole('checkbox', { name: 'I understand and accept these connection risks', exact: true })).not.toBeChecked()
+    await expect(dialog.getByRole('region', { name: 'Optional credential management', exact: true }).getByRole('checkbox')).not.toBeChecked()
     await expect(dialog.getByRole('button', { name: 'Connect existing bot', exact: true })).toBeDisabled()
     await references.nth(0).fill('secret:TEST_ACCESS')
     await references.nth(1).fill('secret:TEST_SESSION')
@@ -179,6 +180,54 @@ Then('the local roster is empty again', async ({ page }: { page: Page }) => {
   await recordAssertion(page, 'bots-confirmed-local-remove', async () => {
     await expect(page.getByRole('dialog', { name: 'Remove local bot data?', exact: true })).toHaveCount(0)
     await expect(workspace(page).getByText('No bots connected', { exact: true })).toBeVisible()
+  })
+  await finishJourneyAssertions(page)
+})
+
+const credentialRegion = (page: Page) => detail(page).getByRole('region', { name: 'Credential management', exact: true })
+const credentialDialog = (page: Page) => page.getByRole('dialog', { name: 'Enable credential management?', exact: true })
+Then('synthetic credential management is not granted', async ({ page }: { page: Page }) => {
+  await recordAssertion(page, 'bots-credential-grant-default-off', async () => {
+    await expect(credentialRegion(page)).toContainText('Automatic vault saves are not granted.')
+    await expect(credentialRegion(page).getByRole('button', { name: 'Enable credential management…', exact: true })).toBeEnabled()
+  })
+})
+When('the synthetic credential permission dialog is cancelled after consent', async ({ page }: { page: Page }) => {
+  await credentialRegion(page).getByRole('button', { name: 'Enable credential management…', exact: true }).click()
+  await credentialDialog(page).getByRole('checkbox', { name: 'Allow synthetic credential saves', exact: true }).check()
+  await credentialDialog(page).getByRole('button', { name: 'Cancel', exact: true }).click()
+})
+When('the synthetic credential permission dialog is reopened', async ({ page }: { page: Page }) => {
+  await credentialRegion(page).getByRole('button', { name: 'Enable credential management…', exact: true }).click()
+})
+Then('synthetic credential consent is unchecked and enabling is disabled', async ({ page }: { page: Page }) => {
+  await recordAssertion(page, 'bots-credential-reopen-resets-consent', async () => {
+    await expect(credentialDialog(page).getByRole('checkbox', { name: 'Allow synthetic credential saves', exact: true })).not.toBeChecked()
+    await expect(credentialDialog(page).getByRole('button', { name: 'Enable credential management', exact: true })).toBeDisabled()
+  })
+})
+When('synthetic credential management is explicitly enabled', async ({ page }: { page: Page }) => {
+  await credentialDialog(page).getByRole('checkbox', { name: 'Allow synthetic credential saves', exact: true }).check()
+  await credentialDialog(page).getByRole('button', { name: 'Enable credential management', exact: true }).click()
+  await expect(credentialDialog(page)).toHaveCount(0)
+})
+Then('synthetic credential management remains enabled after a reload', async ({ page }: { page: Page }) => {
+  await recordAssertion(page, 'bots-credential-grant-survives-browser-reload', async () => {
+    await page.reload()
+    await page.getByRole('button', { name: 'Bots', exact: true }).click()
+    await openFixtureBot(page)
+    await expect(credentialRegion(page)).toContainText('Managed credential references enabled.')
+    await expect(credentialRegion(page).getByRole('button', { name: 'Revoke credential management', exact: true })).toBeEnabled()
+  })
+})
+When('synthetic credential management is revoked', async ({ page }: { page: Page }) => {
+  await credentialRegion(page).getByRole('button', { name: 'Revoke credential management', exact: true }).click()
+})
+Then('synthetic credential management is not granted and the conversation remains connected', async ({ page }: { page: Page }) => {
+  await recordAssertion(page, 'bots-credential-revoke-retains-conversation', async () => {
+    await expect(credentialRegion(page)).toContainText('Automatic vault saves are not granted.')
+    await expect(detail(page).getByText('Connected', { exact: true })).toBeVisible()
+    await expect(composer(page)).toBeEnabled()
   })
   await finishJourneyAssertions(page)
 })

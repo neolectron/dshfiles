@@ -86,6 +86,16 @@ const AdapterForm = (props: ConnectProps & { readonly adapter: BotAdapterInfo })
         </p>
         <form.AppField name="accepted">{field => <field.CheckboxField label="I understand and accept these connection risks" />}</form.AppField>
       </section>
+      {props.adapter.credentialManagement !== undefined && (
+        <section aria-label="Optional credential management" className="dshx:space-y-3 dshx:rounded-lg dshx:border dshx:p-4">
+          <p className="dshx:text-sm">{props.adapter.credentialManagement.description}</p>
+          <p className="dshx:text-xs dshx:text-muted-foreground">
+            Optional additional vault grant. Manual references remain the default. Revoking stops new saves; an already accepted vault call may finish. No
+            credentials or local data are deleted.
+          </p>
+          <form.AppField name="manageCredentials">{field => <field.CheckboxField label={props.adapter.credentialManagement!.label} />}</form.AppField>
+        </section>
+      )}
       {props.failed && (
         <p className="dshx:text-sm dshx:text-destructive" role="alert">
           Could not connect. Check the adapter and vault references, then try again. Credential values are never shown here.

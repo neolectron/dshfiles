@@ -33,6 +33,15 @@ export interface BotSendInput {
   readonly text: string
   readonly signal: AbortSignal
 }
+/** Full reference-only configuration maps; replacement is one durable compare-and-swap. */
+export interface BotCredentialReferenceUpdate {
+  readonly previous: Readonly<Record<string, string>>
+  readonly next: Readonly<Record<string, string>>
+}
+export interface BotCredentialReferencePublisher {
+  assertActive(): void
+  replace(update: BotCredentialReferenceUpdate): Promise<void>
+}
 export interface BotAdapterSession {
   readonly accountId: string
   readonly bots: readonly BotIdentity[]
@@ -41,13 +50,19 @@ export interface BotAdapterSession {
   send(input: BotSendInput): Promise<AdapterMessage>
   /** Never turn an ambiguous outcome into an automatic new send. */
   reconcile(input: BotSendInput): Promise<{ readonly kind: 'found'; readonly message: AdapterMessage } | { readonly kind: 'not-found' | 'unknown' }>
+  /** Only after durable identity continuity and an explicit additional vault-management grant. */
+  bindCredentialReferences?(input: {
+    readonly connectionId: string
+    readonly publish: BotCredentialReferencePublisher
+    readonly signal: AbortSignal
+  }): Promise<void>
   close(): Promise<void>
 }
 export interface BotAdapter {
   readonly info: BotAdapterInfo
   readonly pollIntervalMs: number
   validateConfig(config: Readonly<Record<string, string>>): void
-  open(input: { readonly config: Readonly<Record<string, string>>; readonly signal: AbortSignal }): Promise<BotAdapterSession>
+  open(input: { readonly config: Readonly<Record<string, string>>; readonly signal: AbortSignal; readonly connectionId?: string }): Promise<BotAdapterSession>
 }
 export type BotAdapterErrorCode =
   | 'auth-required'

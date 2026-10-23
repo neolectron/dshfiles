@@ -6,6 +6,7 @@ import { JsonText } from '@dshfiles/dshx/api'
 import { BotAdapterError, type AdapterMessage, type BotAdapter, type BotAdapterSession, type BotPollInput, type BotSendInput } from '@dshfiles/bots/adapter'
 import { formatSecretReference, secretReferenceSchema } from '@dshfiles/credential-port'
 import { DotHttp, segment, type HttpFetch } from './http.js'
+import { DotCredentials, type DotCredentialStore } from './credentials.js'
 import { baselinePageSchema, messageSchema, pageSchema, primarySchema, profileSchema, roomSchema, verifyRoom, type Message } from './protocol.js'
 
 const configSchema = z.object({ accessTokenRef: secretReferenceSchema, sessionTokenRef: secretReferenceSchema }).strict()
@@ -49,6 +50,7 @@ const unknownDelivery = (): BotAdapterError =>
 export interface DotDependencies {
   /** Host-only seam. Receives canonical reference text, never browser input or a raw credential configuration. */
   readonly resolveSecret: (reference: string) => Promise<string | undefined>
+  readonly store?: DotCredentialStore
   readonly fetch?: HttpFetch
   readonly now?: () => number
 }
@@ -61,7 +63,12 @@ export function createDotAdapter(dependencies: DotDependencies): BotAdapter {
       version: 1,
       name: 'OpenAI Dot (unofficial)',
       description: 'Message your existing primary Dot. Text only; incoming messages are polled while DSH runs.',
-      risk: 'This unsupported private ChatGPT protocol may stop working or be denied. These credentials grant broad ChatGPT account access, not a Dot-only scope. DSH resolves vault references on the Host only. No browser extraction, challenge bypass or automatic vault writes. Renewal stays in memory; reconnect resolves the references again. Only messages since linking are synchronized. Approvals and media require native ChatGPT. All admitted DSH browsers share the owner account authority.',
+      risk: 'This unsupported private ChatGPT protocol may stop working or be denied. These credentials grant broad ChatGPT account access, not a Dot-only scope. DSH resolves vault references on the Host only. No browser extraction or challenge bypass. Renewal stays in memory unless you explicitly grant managed credential storage after identity verification. Only messages since linking are synchronized. Approvals and media require native ChatGPT. All admitted DSH browsers share the owner account authority.',
+      credentialManagement: {
+        label: 'Keep Dot credentials renewed in the vault',
+        description:
+          'Optional: create one new global provider-owned session bundle and switch both references together. Renewals replace that whole bundle. Original aliases are never changed or deleted. Revoking stops new work, not accepted writes. Provider/local crash windows may require reauthorization. No cross-host sharing or backend compare-and-swap.',
+      },
       fields: [
         {
           key: 'accessTokenRef',
@@ -88,17 +95,15 @@ export function createDotAdapter(dependencies: DotDependencies): BotAdapter {
       const config = configSchema.safeParse(input.config)
       if (!config.success) throw new BotAdapterError('auth-required', 'Dot requires accessTokenRef and sessionTokenRef secret references.')
       if (input.signal.aborted) throw new BotAdapterError('unavailable', 'Dot connection was canceled.')
-      let accessToken: string | undefined
-      let sessionToken: string | undefined
+      const credentials = new DotCredentials(input.config, input.connectionId, dependencies.resolveSecret, dependencies.store, input.signal)
+      let pair
       try {
-        accessToken = await dependencies.resolveSecret(formatSecretReference(config.data.accessTokenRef))
-        input.signal.throwIfAborted()
-        sessionToken = await dependencies.resolveSecret(formatSecretReference(config.data.sessionTokenRef))
-      } catch {
+        pair = await credentials.load(formatSecretReference(config.data.accessTokenRef), formatSecretReference(config.data.sessionTokenRef))
+      } catch (error) {
+        if (error instanceof BotAdapterError && error.code === 'identity-mismatch') throw error
         throw new BotAdapterError('auth-required', 'Dot could not resolve the configured secret references on the Host.')
       }
-      if (!accessToken || !sessionToken) throw new BotAdapterError('auth-required', 'Dot credential references did not resolve; reconnect using the vault.')
-      const http = new DotHttp({ accessToken, sessionToken }, dependencies.fetch ?? globalThis.fetch, now)
+      const http = new DotHttp(pair, dependencies.fetch ?? globalThis.fetch, now, { assertActive: credentials.assertActive, renewed: credentials.renewed })
       try {
         input.signal.throwIfAborted()
         const primary = await http.api('/tbo/primary', primarySchema, input.signal)
@@ -165,10 +170,13 @@ export function createDotAdapter(dependencies: DotDependencies): BotAdapter {
           if (last && ordered.every(message => message.id === cursor)) throw protocolFailure()
           return { messages: messages.filter(message => message.id !== cursor), cursor: next, hasMore }
         }
-        return {
-          accountId: createHash('sha256')
-            .update(JSON.stringify([http.identity.account, http.identity.user, http.identity.accountUser ?? null, members.human, members.dot]))
-            .digest('hex'),
+        const accountId = createHash('sha256')
+          .update(JSON.stringify([http.identity.account, http.identity.user, http.identity.accountUser ?? null, members.human, members.dot]))
+          .digest('hex')
+        credentials.verifyAccount(accountId)
+        const session: BotAdapterSession = {
+          accountId,
+          bindCredentialReferences: bind => credentials.run(() => credentials.bind(bind)),
           bots: [
             {
               remoteId: profile.id,
@@ -248,10 +256,18 @@ export function createDotAdapter(dependencies: DotDependencies): BotAdapter {
             return { kind: 'unknown' }
           },
           async close() {
+            credentials.close()
             http.close()
           },
         }
+        return {
+          ...session,
+          poll: request => credentials.run(() => session.poll(request)),
+          send: request => credentials.run(() => session.send(request)),
+          reconcile: request => credentials.run(() => session.reconcile(request)),
+        }
       } catch (error) {
+        credentials.close()
         http.close()
         if (error instanceof BotAdapterError) throw error
         throw new BotAdapterError('unavailable', 'Dot connection was canceled or unavailable.')

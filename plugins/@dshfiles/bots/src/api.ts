@@ -18,8 +18,15 @@ export const botsApi = defineApi({
       input: botConnectInputSchema,
       output: botsSnapshotSchema,
       description:
-        'Connect an existing durable bot using adapter configuration references. May run only when the user asked and explicitly accepted the displayed adapter risks.',
+        'Connect an existing durable bot using adapter configuration references. May run only when the user asked and explicitly accepted the displayed adapter risks. manageCredentials additionally requires the user’s explicit vault-management grant; it defaults to false.',
       tool: { name: 'bots_connect', readOnly: false },
+    }),
+    setCredentialManagement: method({
+      input: connectionInput.extend({ enabled: z.boolean(), acceptRisks: z.literal(true).optional() }),
+      output: botsSnapshotSchema,
+      description:
+        'Grant or revoke adapter-managed credential-reference updates. May run only when the user asked. Enabling requires an explicit additional vault-management grant and acceptRisks true; revoking retains references, credentials and local data.',
+      tool: { name: 'bots_set_credential_management', readOnly: false },
     }),
     reconnect: method({
       input: connectionInput,

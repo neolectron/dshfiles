@@ -28,6 +28,10 @@ export const botAdapterInfoSchema = z
     description: z.string().max(1200),
     risk: z.string().max(3000),
     fields: z.array(botFieldSchema).max(16),
+    credentialManagement: z
+      .object({ label: z.string().min(1).max(120), description: z.string().min(1).max(3000) })
+      .strict()
+      .optional(),
   })
   .strict()
 export const botConversationSchema = z
@@ -57,6 +61,7 @@ export const botConnectionSchema = z
     error: z.string().nullable(),
     lastSyncAt: z.number().nullable(),
     enabled: z.boolean(),
+    credentialManagement: z.boolean().default(false),
     accountId: z.string().nullable(),
     createdAt: z.number(),
   })
@@ -97,6 +102,7 @@ export const botConnectInputSchema = z
     label: z.string().trim().min(1).max(100),
     config: z.record(z.string().max(80), z.string().max(4096)),
     acceptRisks: z.literal(true),
+    manageCredentials: z.boolean().optional(),
   })
   .strict()
 export type BotConnection = z.infer<typeof botConnectionSchema>

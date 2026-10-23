@@ -135,4 +135,39 @@ describe('Bots real Cordis/storageDomain Host boundary', () => {
       await removeFixture(root)
     }
   })
+
+  it('serves credential grants through the shared API with explicit consent and safe revocation', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'dsh-bots-host-'))
+    let opened: Awaited<ReturnType<typeof openHost>> | undefined
+    try {
+      opened = await openHost(root)
+      const base = minimalAdapter()
+      let bindings = 0
+      opened.host.ctx.botAdapters.register({
+        ...base,
+        info: { ...base.info, credentialManagement: { label: 'Allow synthetic saves', description: 'Synthetic test only.' } },
+        open: async input => ({
+          ...(await base.open(input)),
+          bindCredentialReferences: async ({ publish }) => {
+            publish.assertActive()
+            bindings++
+          },
+        }),
+      })
+      const connected = await opened.api.connect({ adapterId: base.info.id, label: 'API consent', config: {}, acceptRisks: true })
+      const connectionId = connected.connections[0]!.id
+      expect(connected.connections[0]?.credentialManagement).toBe(false)
+      expect(bindings).toBe(0)
+      await expect(opened.api.setCredentialManagement({ connectionId, enabled: true })).rejects.toThrow('explicit additional')
+      expect((await opened.api.setCredentialManagement({ connectionId, enabled: true, acceptRisks: true })).connections[0]?.credentialManagement).toBe(true)
+      expect(bindings).toBe(1)
+      const revoked = await opened.api.setCredentialManagement({ connectionId, enabled: false })
+      expect(revoked.connections[0]?.credentialManagement).toBe(false)
+      expect(revoked.bots).toHaveLength(1)
+      expect(bindings).toBe(1)
+    } finally {
+      await opened?.host.dispose()
+      await removeFixture(root)
+    }
+  })
 })

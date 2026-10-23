@@ -1368,6 +1368,9 @@ importers:
       '@dshfiles/credential-port':
         specifier: workspace:*
         version: link:../credential-port
+      '@dshfiles/secret-catalog':
+        specifier: workspace:*
+        version: link:../secret-catalog
       zod:
         specifier: 'catalog:'
         version: 4.4.3

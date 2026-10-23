@@ -1,4 +1,4 @@
-@bot-openai-dot
+@bot-openai-dot @fake-secret-cli
 Feature: Existing OpenAI Dot adapter integration
   The real Host-only adapter registers with Bots without creating a Dot or authenticating an account.
 

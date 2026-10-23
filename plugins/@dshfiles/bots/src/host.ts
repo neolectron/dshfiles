@@ -70,6 +70,7 @@ const api = botsApi.host({
   snapshot: ({ ctx }) => withEngine(ctx, engine => engine.snapshot()),
   connect: ({ ctx, input }) => withEngine(ctx, engine => engine.connect(input)),
   reconnect: ({ ctx, input }) => withEngine(ctx, engine => engine.reconnect(input)),
+  setCredentialManagement: ({ ctx, input }) => withEngine(ctx, engine => engine.setCredentialManagement(input)),
   disconnect: ({ ctx, input }) => withEngine(ctx, engine => engine.disconnect(input)),
   remove: ({ ctx, input }) => withEngine(ctx, engine => engine.remove(input)),
   messages: ({ ctx, input }) => withEngine(ctx, engine => engine.messages(input)),

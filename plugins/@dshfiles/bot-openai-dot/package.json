@@ -33,6 +33,7 @@
   "dependencies": {
     "@dshfiles/bots": "workspace:*",
     "@dshfiles/credential-port": "workspace:*",
+    "@dshfiles/secret-catalog": "workspace:*",
     "zod": "catalog:"
   },
   "devDependencies": {

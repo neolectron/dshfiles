@@ -27,7 +27,11 @@
         "following-latest",
         "reading-earlier-messages",
         "new-messages-below",
-        "remove-confirmation"
+        "remove-confirmation",
+        "manual-credential-references",
+        "credential-management-consent",
+        "credential-management-enabled",
+        "credential-management-revoked"
       ],
       "failureModes": [
         "A missing Bots API owner shows unavailable and stops polling rather than crashing the slot.",
@@ -35,7 +39,8 @@
         "Disconnect stops local synchronization only; removal deletes local connection/cache only, not the remote bot or vault credentials.",
         "A transport error leaves delivery unconfirmed. Reconnect never resends; explicit retry retains the original request UUID.",
         "Unsupported content is text-only with an original-app link only when the adapter supplied a credential-free HTTPS URL.",
-        "The displayed conversation is a bounded local projection. Since-link history is disclosed and is not advertised as a full import."
+        "The displayed conversation is a bounded local projection. Since-link history is disclosed and is not advertised as a full import.",
+        "Managed reference replacement requires the current worker/session/account/grant and a canonical full-map CAS. Revocation stops new saves but does not roll back an already accepted vault call or delete credentials."
       ],
       "externalDependencies": [],
       "verification": [
@@ -87,23 +92,64 @@
           "file": "plugins/@dshfiles/bots/src/bots-conversation-viewport.test.tsx",
           "testName": "preserves a reader scrolled up and offers an explicit jump when new messages arrive"
         },
-        { "kind": "gherkin", "id": "bots.empty-workspace", "featureFile": "tooling/dshx/e2e/features/bots.feature" },
-        { "kind": "gherkin", "id": "bots.fixture-conversation", "featureFile": "tooling/dshx/e2e/features/bots.feature" }
+        {
+          "kind": "gherkin",
+          "id": "bots.empty-workspace",
+          "featureFile": "tooling/dshx/e2e/features/bots.feature"
+        },
+        {
+          "kind": "gherkin",
+          "id": "bots.fixture-conversation",
+          "featureFile": "tooling/dshx/e2e/features/bots.feature"
+        },
+        {
+          "kind": "gherkin",
+          "id": "bots.credential-management",
+          "featureFile": "tooling/dshx/e2e/features/bots-credential-management.feature"
+        },
+        {
+          "kind": "unit-test",
+          "id": "bots.credential-permission-ui",
+          "file": "plugins/@dshfiles/bots/src/bots-credential-management.test.tsx",
+          "testName": "requires fresh unchecked consent before enabling and resets it on reopen"
+        },
+        {
+          "kind": "unit-test",
+          "id": "bots.credential-revoke-ui",
+          "file": "plugins/@dshfiles/bots/src/bots-credential-management.test.tsx",
+          "testName": "revokes immediately without consent or deleting credentials, including when the adapter is missing"
+        },
+        {
+          "kind": "unit-test",
+          "id": "bots.credential-atomic-reference-cas",
+          "file": "plugins/@dshfiles/bots/src/credential-lifecycle.test.ts",
+          "testName": "binds only after durable identity validation and atomically commits both references before connected"
+        }
       ]
     },
     {
       "id": "connect-bot",
       "title": "Connect through provider adapter metadata",
-      "summary": "Choose a registered provider adapter and fill its declared fields. Credential fields accept vault references only and offer the shared secret-reference binding. The adapter risk disclosure requires explicit acceptance. No raw credential, native DSH thread, model preset or remote replacement bot is created.",
+      "summary": "Choose a registered provider adapter and fill its declared fields. Credential fields accept vault references only and offer the shared secret-reference binding. The adapter risk disclosure requires explicit acceptance. No raw credential, native DSH thread, model preset or remote replacement bot is created. Supported adapters offer a separate optional, initially unchecked credential-management grant; manual references remain the default.",
       "reach": ["click button \"Bots\"", "click button \"Connect bot\"", "expect dialog \"Connect bot\""],
       "surfaces": ["client", "host", "tool"],
       "configuration": [],
-      "states": ["no-adapters", "adapter-selected", "risk-not-accepted", "validation-error", "connecting", "connection-error"],
+      "states": [
+        "no-adapters",
+        "adapter-selected",
+        "risk-not-accepted",
+        "validation-error",
+        "connecting",
+        "connection-error",
+        "credential-management-unchecked",
+        "credential-management-explicitly-granted"
+      ],
       "failureModes": [
         "No registered adapter leaves an honest unavailable message, not a fake bot or credential form.",
         "The reference grammar is shared with credential-port. Raw tokens are rejected before a connect request.",
         "Risk acceptance is initially false and resets when choosing another adapter.",
-        "Connection failure shows a safe generic error, never a raw provider response or submitted credential."
+        "Connection failure shows a safe generic error, never a raw provider response or submitted credential.",
+        "Connection-risk consent is not a credential-management grant. The optional vault checkbox is unchecked initially and resets when choosing another adapter."
       ],
       "externalDependencies": [],
       "verification": [
@@ -131,7 +177,17 @@
           "file": "plugins/@dshfiles/bots/src/bots-ui-model.test.ts",
           "testName": "accepts a completely different provider without provider-specific fields"
         },
-        { "kind": "gherkin", "id": "bots.connect-metadata", "featureFile": "tooling/dshx/e2e/features/bots.feature" }
+        {
+          "kind": "gherkin",
+          "id": "bots.connect-metadata",
+          "featureFile": "tooling/dshx/e2e/features/bots.feature"
+        },
+        {
+          "kind": "unit-test",
+          "id": "bots.credential-connect-consent",
+          "file": "plugins/@dshfiles/bots/src/bots-connect-dialog.test.tsx",
+          "testName": "leaves the optional additional vault grant unchecked and submits manual mode by default"
+        }
       ]
     }
   ]

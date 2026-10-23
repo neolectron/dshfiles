@@ -3,7 +3,15 @@ import { z } from 'zod'
 import { formatSecretReference, parseSecretReference } from '@dshfiles/credential-port'
 import { BotAdapterError } from '@dshfiles/bots/adapter'
 import { PluginApiError } from '@dshfiles/dshx/api'
-import type { AdapterMessage, BotAdapter, BotAdapterRegistry, BotAdapterSession, BotSendInput } from './adapter.js'
+import type {
+  AdapterMessage,
+  BotAdapter,
+  BotAdapterRegistry,
+  BotAdapterSession,
+  BotCredentialReferencePublisher,
+  BotCredentialReferenceUpdate,
+  BotSendInput,
+} from './adapter.js'
 import {
   botAdapterInfoSchema,
   botConnectInputSchema,
@@ -279,7 +287,7 @@ export class BotsEngine {
       const config = this.validatedConfig(worker.adapter, row.config)
       const session = await this.network(
         worker,
-        signal => worker.adapter.open({ config, signal }),
+        signal => worker.adapter.open({ config, signal, connectionId: worker.connectionId }),
         late => this.closeSession(late),
       )
       worker.session = session
@@ -352,8 +360,25 @@ export class BotsEngine {
             })
           current.accountId = session.accountId
         }
-        current.status = 'connected'
         current.error = null
+      })
+      if (!this.active(worker)) return
+      if (connectionOf(this.store.read(), worker.connectionId).connection.credentialManagement) {
+        if (worker.adapter.info.credentialManagement === undefined || session.bindCredentialReferences === undefined)
+          return refusal('This adapter session does not support managed credential references.')
+        const pending: Promise<void>[] = []
+        let binding = true
+        const publish = this.credentialPublisher(worker, session, result => {
+          if (binding) pending.push(result)
+        })
+        await this.network(worker, () => session.bindCredentialReferences!({ connectionId: worker.connectionId, publish, signal: worker.controller.signal }))
+        binding = false
+        // A binding cannot acknowledge readiness before any publication it started is durable.
+        await Promise.all(pending)
+      }
+      await this.store.change(state => {
+        if (!this.active(worker)) return
+        connectionOf(state, worker.connectionId).connection.status = 'connected'
       })
       if (this.active(worker)) this.schedule(worker, 0)
     } catch (error) {
@@ -361,6 +386,52 @@ export class BotsEngine {
         await this.recordError(worker, error)
         this.stopWorker(worker.connectionId)
       }
+    }
+  }
+
+  private credentialPublisher(worker: Worker, session: BotAdapterSession, track: (result: Promise<void>) => void): BotCredentialReferencePublisher {
+    const accountId = session.accountId
+    const assertActive = (): void => {
+      if (!this.active(worker) || worker.session !== session || session.accountId !== accountId || worker.adapter.info.credentialManagement === undefined)
+        return refusal(CANCELLED)
+      const current = connectionOf(this.store.read(), worker.connectionId).connection
+      if (!current.credentialManagement || current.accountId !== accountId) return refusal(CANCELLED)
+    }
+    return {
+      assertActive,
+      replace: (update: BotCredentialReferenceUpdate): Promise<void> => {
+        // Snapshot caller-owned maps before queuing; never trust their later mutation.
+        const previous = { ...update.previous }
+        const next = { ...update.next }
+        const result = this.store.change(state => {
+          assertActive()
+          const row = connectionOf(state, worker.connectionId)
+          if (!row.connection.credentialManagement || row.connection.accountId !== accountId) return refusal(CANCELLED)
+          const keys = Object.keys(row.config)
+          const same = (left: Readonly<Record<string, string>>, right: Readonly<Record<string, string>>): boolean =>
+            Object.keys(left).length === Object.keys(right).length && Object.keys(left).every(key => Object.hasOwn(right, key) && left[key] === right[key])
+          if (
+            Object.keys(previous).length !== keys.length ||
+            Object.keys(next).length !== keys.length ||
+            keys.some(key => !Object.hasOwn(previous, key) || !Object.hasOwn(next, key))
+          )
+            return refusal('Credential reference updates cannot change configuration keys.')
+          for (const field of worker.adapter.info.fields) {
+            if (field.kind !== 'secret-reference' && previous[field.key] !== next[field.key])
+              return refusal('Credential reference updates cannot change non-secret fields.')
+          }
+          // Validation and canonical equality are inside the same serialized mutation as CAS.
+          if (!same(this.validatedConfig(worker.adapter, previous), previous) || !same(this.validatedConfig(worker.adapter, next), next))
+            return refusal('Credential updates require canonical secret references.')
+          if (same(row.config, next)) return // A durable, already-committed retry is successful.
+          if (!same(row.config, previous)) return refusal('Credential references changed before this update; reconnect explicitly.')
+          row.config = next
+        })
+        track(result)
+        void result.catch(() => undefined)
+        // No cancellation check after a known durable commit: the adapter still owns its committed aliases.
+        return result
+      },
     }
   }
 
@@ -503,6 +574,8 @@ export class BotsEngine {
     const parsed = botConnectInputSchema.safeParse(input)
     if (!parsed.success) return refusal('Bot connection input is invalid; explicit risk acceptance is required.')
     const adapter = this.registry.get(input.adapterId) ?? refusal('The requested bot adapter is not registered.')
+    if (parsed.data.manageCredentials === true && adapter.info.credentialManagement === undefined)
+      return refusal('This bot adapter does not support managed credential references.')
     const config = this.validatedConfig(adapter, parsed.data.config)
     const id = this.id()
     await this.store.change(state => {
@@ -517,6 +590,7 @@ export class BotsEngine {
           error: null,
           lastSyncAt: null,
           enabled: true,
+          credentialManagement: parsed.data.manageCredentials === true,
           accountId: null,
           createdAt: this.now(),
         },
@@ -549,6 +623,32 @@ export class BotsEngine {
         connection.error = 'The bot adapter is not registered.'
       })
     } else if (!this.closed) await this.launch(input.connectionId, adapter)
+    return this.snapshot()
+  }
+
+  async setCredentialManagement(input: { connectionId: string; enabled: boolean; acceptRisks?: true | undefined }): Promise<BotsSnapshot> {
+    await this.start()
+    this.assertOpen()
+    const row = connectionOf(this.store.read(), input.connectionId)
+    const adapter = this.registry.get(row.connection.adapterId)
+    if (input.enabled && (input.acceptRisks !== true || adapter?.info.credentialManagement === undefined))
+      return refusal('Enabling credential management requires adapter support and an explicit additional vault-management grant.')
+    const version = this.nextCommand(input.connectionId)
+    this.stopWorker(input.connectionId)
+    await this.store.change(state => {
+      const current = connectionOf(state, input.connectionId).connection
+      current.credentialManagement = input.enabled
+      current.status = current.enabled ? 'connecting' : 'disconnected'
+      current.error = null
+      this.makeUncertain(state, input.connectionId)
+    })
+    if (
+      this.commandVersions.get(input.connectionId) === version &&
+      !this.closed &&
+      connectionOf(this.store.read(), input.connectionId).connection.enabled &&
+      adapter !== undefined
+    )
+      await this.launch(input.connectionId, adapter)
     return this.snapshot()
   }
 

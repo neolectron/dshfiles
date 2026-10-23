@@ -18,6 +18,7 @@ const adapter: BotAdapterInfo = {
 const validForm = () => ({
   label: 'My existing bot',
   accepted: true,
+  manageCredentials: false,
   fields: [
     { key: 'account', value: 'secret:ACCOUNT' },
     { key: 'session', value: 'secret:SESSION@test' },
@@ -78,7 +79,10 @@ describe('Bots metadata connection form', () => {
       name: 'Another provider',
       fields: [{ key: 'endpointLabel', label: 'Endpoint label', kind: 'text', required: true, help: 'Name the endpoint.' }],
     }
-    expect(BotsUiModel.connectInput(other, { label: 'Another bot', accepted: true, fields: [{ key: 'endpointLabel', value: 'test' }] }).config).toEqual({
+    expect(
+      BotsUiModel.connectInput(other, { label: 'Another bot', accepted: true, manageCredentials: false, fields: [{ key: 'endpointLabel', value: 'test' }] })
+        .config,
+    ).toEqual({
       endpointLabel: 'test',
     })
   })
