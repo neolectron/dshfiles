@@ -66,6 +66,7 @@ const fixtureHostSummarySchema = z.object({
   networkObservation: z.object({ before: socketSnapshotSchema, after: socketSnapshotSchema.optional(), limitation: z.string().max(256) }).strict().optional(),
   frame: z.object({ mime: z.literal('image/jpeg'), bytes: z.number().int().positive().max(1024 * 1024), width: z.literal(1280), height: z.literal(900), persisted: z.literal(false) }).strict().optional(),
   privacy: z.object({ rawNativeStderrOnly: z.literal(true), collectorAndSpillAbsent: z.literal(true), cdpReadinessSeenPrivately: z.literal(true), publicLogsEndpointFree: z.literal(true) }).strict().optional(),
+  rendererObservation: z.object({ ownedDescendants: z.number().int().nonnegative(), exactArgvMatches: z.number().int().nonnegative(), titleTokenMatches: z.number().int().nonnegative() }).strict().optional(),
   inputOperations: z.array(z.object({ stage: z.string().max(100), elapsedMs: z.number().nonnegative(), completed: z.boolean() }).strict()).max(16).optional(),
   input: z.object({ pointer: z.literal(true), text: z.literal(true), wheel: z.literal(true), key: z.literal(true), actualLocalPost: z.literal(true) }).strict().optional(),
   routing: z.object({ forbiddenLoopbackHits: z.literal(0), scriptDenied: z.literal(true), osEgressContainment: z.literal(false) }).strict().optional(),
@@ -392,7 +393,15 @@ async function fixtureHost() {
   summary.stage = 'renderer-sandbox-evidence'
   // Owned descendant PID traversal only; never enumerate or signal foreign PIDs.
   const descendants = await ownedDescendants(pid)
-  const renderers = descendants.filter(child => child.args.split('\0').includes('--type=renderer'))
+  // Linux Chromium may rewrite its process title into one space-separated
+  // argv entry. Match only complete tokens on already-owned descendants;
+  // never infer ownership or sandbox evidence from a title alone.
+  const renderers = descendants.filter(child => child.args.split(/[\s\0]+/u).includes('--type=renderer'))
+  summary.rendererObservation = {
+    ownedDescendants: descendants.length,
+    exactArgvMatches: descendants.filter(child => child.args.split('\0').includes('--type=renderer')).length,
+    titleTokenMatches: renderers.length,
+  }
   assert(renderers.length > 0, 'Owned renderer evidence is required')
   let namespacesInspectable = true
   for (const renderer of renderers) {

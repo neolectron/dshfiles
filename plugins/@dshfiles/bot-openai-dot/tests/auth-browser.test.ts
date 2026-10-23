@@ -297,6 +297,65 @@ describe('explicit synthetic managed browser factory', () => {
     expect((await lstat(f.spec().cwd)).isDirectory()).toBe(true)
   })
 
+  it.each([
+    { rangeEmpty: true, childDone: true },
+    { rangeEmpty: false, childDone: true },
+    { rangeEmpty: true, childDone: false },
+  ])('joins an expected native transport disconnect only with positive native joins: %j', async ({ rangeEmpty, childDone }) => {
+    const f = fixture({ rangeEmpty })
+    if (!childDone) {
+      vi.useFakeTimers()
+      vi.mocked(f.handle.terminate).mockImplementation(() => {})
+    }
+    let connected = true
+    const context = {
+      newPage: async () => ({
+        on: vi.fn(),
+        goto: async () => {},
+      }),
+      close: vi.fn(async () => {
+        if (!connected) throw new Error(`${canary} ${endpoint}`)
+      }),
+      on: vi.fn(),
+      setDefaultTimeout: vi.fn(),
+      setDefaultNavigationTimeout: vi.fn(),
+      route: vi.fn(async () => {}),
+      routeWebSocket: vi.fn(async () => {}),
+    }
+    const publicBrowser = {
+      newContext: async () => context,
+      isConnected: () => connected,
+      close: vi.fn(async () => {
+        if (!connected) throw new Error(`${canary} ${endpoint}`)
+        connected = false
+      }),
+    }
+    vi.doMock('playwright-core', () => ({ chromium: { connectOverCDP: async () => publicBrowser } }))
+    const browser = await createFixtureBrowserFactory({ runtime: f.runtime, policy, confirmLocalExecutionWorld: f.confirmLocalExecutionWorld })(signal())
+    // Native abort starts termination; CDP disappears before Playwright can
+    // acknowledge its context/browser close. No real process or socket exists.
+    f.spec().signal?.addEventListener(
+      'abort',
+      () => {
+        connected = false
+      },
+      { once: true },
+    )
+    const closing = browser.close()
+    if (rangeEmpty && childDone) {
+      await expect(closing).resolves.toBeUndefined()
+      await expect(lstat(f.spec().cwd)).rejects.toMatchObject({ code: 'ENOENT' })
+    } else {
+      const rejected = expect(closing).rejects.toThrow(/^Synthetic fixture browser cleanup unconfirmed; private temporary profile retained\.$/u)
+      if (!childDone) await vi.advanceTimersByTimeAsync(10_000)
+      await rejected
+      expect((await lstat(f.spec().cwd)).isDirectory()).toBe(true)
+    }
+    expect(context.close).toHaveBeenCalledTimes(1)
+    expect(publicBrowser.close).toHaveBeenCalledTimes(1)
+    expect(f.handle.waitForExit).toHaveBeenCalled()
+  })
+
   it('refuses deletion after its directory identity/mode changes', async () => {
     const { chmod } = await import('node:fs/promises')
     const f = fixture()
@@ -415,6 +474,14 @@ describe('explicit synthetic managed browser factory', () => {
     expect(page.screenshot).toHaveBeenCalledWith({ type: 'jpeg', quality: 65, fullPage: false, timeout: 10_000 })
     await browser.input({ kind: 'text', text: canary }, signal())
     expect(page.keyboard.insertText).toHaveBeenCalledWith(canary)
+    const completedDown = new AbortController()
+    await browser.input({ kind: 'pointer', action: 'down', x: 10, y: 20, button: 'left' }, completedDown.signal)
+    completedDown.abort()
+    await browser.input({ kind: 'pointer', action: 'up', x: 10, y: 20, button: 'left' }, signal())
+    expect(page.mouse.down).toHaveBeenCalledTimes(1)
+    expect(page.mouse.up).toHaveBeenCalledTimes(1)
+    expect(context.close).not.toHaveBeenCalled()
+    expect(publicBrowser.close).not.toHaveBeenCalled()
     if (routed === undefined || socketHandler === undefined) throw new Error('Missing default-deny routes')
     for (const requested of [
       policy.entryUrl,

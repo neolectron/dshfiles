@@ -21,6 +21,13 @@ class BrowserCleanupUnconfirmed extends Error {
     super(CLEANUP_FAILED)
   }
 }
+// Only the default IO can attest that its public control transport disconnected.
+// This is not process-exit proof: both native joins remain mandatory below.
+class BrowserTransportDisconnected extends Error {
+  constructor() {
+    super(CLEANUP_FAILED)
+  }
+}
 
 /** Trusted Host configuration, NEVER a value accepted from browser input or a provider adapter.
  * There is deliberately no production policy: incognito interception is NOT OS egress containment.
@@ -319,9 +326,14 @@ const playwrightIO: FixtureBrowserIO = {
         },
         async close() {
           try {
-            await context.close()
-          } finally {
-            await browser.close()
+            try {
+              await context.close()
+            } finally {
+              await browser.close()
+            }
+          } catch {
+            if (!browser.isConnected()) throw new BrowserTransportDisconnected()
+            throw new BrowserCleanupUnconfirmed()
           }
         },
       }
@@ -369,7 +381,8 @@ export function createFixtureBrowserFactory(options: FixtureBrowserOptions): (si
       lifetime.abort()
       signal.removeEventListener('abort', onAbort)
       stopping = (async () => {
-        // Both browser and managed-range joins are required, not just direct-child exit.
+        // Revoke page work first. Bound the control-connection stop and independently
+        // join both native observations; direct-child exit alone is insufficient.
         const closeConnection = async () => {
           let connected = established
           if (connected === undefined && connecting !== undefined) {
@@ -384,10 +397,17 @@ export function createFixtureBrowserFactory(options: FixtureBrowserOptions): (si
         }
         const outcomes = await Promise.allSettled([
           bounded(closeConnection()),
-          handle === undefined ? Promise.resolve(true) : terminateManagedProcess({ handle, timeoutMs: DEADLINE_MS }),
+          handle === undefined ? Promise.resolve(true) : bounded(terminateManagedProcess({ handle, timeoutMs: DEADLINE_MS })),
           handle === undefined ? Promise.resolve() : bounded(handle.done),
         ])
-        if (outcomes.some(result => result.status === 'rejected') || outcomes[1]?.status !== 'fulfilled' || outcomes[1].value !== true)
+        const [connection, range, child] = outcomes
+        const nativeJoined = handle !== undefined && range.status === 'fulfilled' && range.value === true && child.status === 'fulfilled'
+        if (
+          range.status !== 'fulfilled' ||
+          range.value !== true ||
+          child.status !== 'fulfilled' ||
+          (connection.status === 'rejected' && !(connection.reason instanceof BrowserTransportDisconnected && nativeJoined))
+        )
           throw new Error(CLEANUP_FAILED)
         try {
           const now = await lstat(directory)
