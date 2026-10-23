@@ -60,6 +60,10 @@ The [Bots feature catalog](../plugins/@dshfiles/bots/dshx.features.json) and [jo
 
 Real account/workspace compatibility remains unverified until the user explicitly links their own Dot. No fixture test proves that OpenAI currently accepts this private protocol for that account. The [end-to-end completion plan](../plans/durable-bots/README.md) stays open for secure onboarding and credential lifecycle, safe deployment into the actual installation, and authorized real-account proof. Version one is a fixture-verified foundation, not a completed live Dot integration.
 
+### Web-only sign-in development
+
+The human-controlled raster viewer, private bounded HTTP channel and synthetic browser worker are implemented but **not activated as production onboarding**. Genuine native-cookie/Origin/API-peer checks and root-only scratch-GUI raster/input/cancellation scenarios pass. Those scenarios use fake page I/O, not a real ChatGPT browser. The managed real-browser investigation additionally requires a separate loopback-only network namespace; browser flags/interception alone allowed background external sockets. A fresh namespace proves the sandbox and cleanup but does not provide approved Internet access for sign-in. The exact provider public entry returned403 in an earlier bounded probe. See the [web sign-in gate](../plans/durable-bots/web-sign-in.md) for remaining input, deployment containment and authenticated account proof; do not ask the user to hunt tokens or install a desktop helper.
+
 ### Focused verification
 
 From the repository root with the pinned official Node and stock `dsh` on PATH:

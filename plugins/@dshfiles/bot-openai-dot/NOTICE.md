@@ -7,6 +7,8 @@ The fixture-only human login viewer ports a narrowly reviewed subset of coordina
 - Pinned source: `da9891b9c8ee64b6c4da16d3ae654d0f1166cccd`
 - Source: `src/client/index.ts` (`createKeyboardProxy`, `browserXY`, `sendInput` mechanics)
 - Source SHA-256: `bdfd1e203eec23e2c365f50cbdb8227024de79c6e42c20901d2c15e56c12b675`
+- Additional source: `src/worker/capture-cdp.ts:78–85` (fixed mouse-event dispatch mechanics only)
+- Additional source SHA-256: `57a90313b58a0c333f0c5f934cbab5bb8ef0d9ff52da50a607742a00b812d907`
 - Upstream license SHA-256: `936deca2ff5619e507f65f2886ba48047e924fb9f1e129b42f734cee04576f90`
 
 This is **not** adoption or execution of the upstream bundle. Its cookie-name-only guard, HTTP bridge, persistent/existing browser discovery and profile import, general browser/JS/CDP/HTTP tools, environment inheritance and worker lifecycle are expressly excluded. The owned implementation uses closed typed input, injected transport, native DSH admission, bounded attempts and explicit cancellation. No production login success or confidentiality from same-UID Host code is claimed.

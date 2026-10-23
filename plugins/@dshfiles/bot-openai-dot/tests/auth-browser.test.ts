@@ -19,6 +19,7 @@ const policy: FixtureBrowserPolicy = {
 const endpoint = 'ws://127.0.0.1:43211/devtools/browser/11111111-2222-3333-4444-555555555555'
 const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 1, 0xff, 0xd9])
 const canary = 'SYNTHETIC_PRIVATE_BROWSER_CANARY'
+type PointerEventFixture = { type: 'mouseMoved' | 'mousePressed' | 'mouseReleased' | 'mouseWheel'; x: number; y: number }
 function deferred<Value>() {
   let resolve!: (value: Value) => void
   const promise = new Promise<Value>(done => {
@@ -316,6 +317,7 @@ describe('explicit synthetic managed browser factory', () => {
       close: vi.fn(async () => {
         if (!connected) throw new Error(`${canary} ${endpoint}`)
       }),
+      newCDPSession: vi.fn(async () => ({ send: vi.fn(async () => {}) })),
       on: vi.fn(),
       setDefaultTimeout: vi.fn(),
       setDefaultNavigationTimeout: vi.fn(),
@@ -415,6 +417,95 @@ describe('explicit synthetic managed browser factory', () => {
     await browser.close()
   })
 
+  it('releases repeat-coordinate UP without entering Playwright left-down move', async () => {
+    let leftDown = false
+    let position = { x: 0, y: 0 }
+    const dragEntered = deferred<'blocked'>()
+    const unblock = deferred<void>()
+    const releases: { x: number; y: number }[] = []
+    const mouse = {
+      move: vi.fn(async (x: number, y: number) => {
+        if (leftDown) {
+          dragEntered.resolve('blocked')
+          await unblock.promise
+        }
+        position = { x, y }
+      }),
+      down: vi.fn(async () => {
+        leftDown = true
+      }),
+      up: vi.fn(async () => {
+        leftDown = false
+        releases.push(position)
+      }),
+    }
+    const send = vi.fn(async (_method: string, event: PointerEventFixture) => {
+      position = { x: event.x, y: event.y }
+      if (event.type === 'mousePressed') leftDown = true
+      if (event.type === 'mouseReleased') {
+        leftDown = false
+        releases.push(position)
+      }
+    })
+    const page = { on: vi.fn(), goto: async () => {}, url: () => policy.entryUrl, mouse }
+    const context = {
+      newPage: async () => page,
+      newCDPSession: vi.fn(async () => ({ send })),
+      close: vi.fn(async () => {}),
+      on: vi.fn(),
+      setDefaultTimeout: vi.fn(),
+      setDefaultNavigationTimeout: vi.fn(),
+      route: vi.fn(async () => {}),
+      routeWebSocket: vi.fn(async () => {}),
+    }
+    vi.doMock('playwright-core', () => ({ chromium: { connectOverCDP: async () => ({ newContext: async () => context, close: async () => {} }) } }))
+    const f = fixture()
+    const browser = await createFixtureBrowserFactory({ runtime: f.runtime, policy, confirmLocalExecutionWorld: f.confirmLocalExecutionWorld })(signal())
+    await browser.input({ kind: 'pointer', action: 'down', x: 10, y: 20, button: 'left' }, signal())
+    const release = browser.input({ kind: 'pointer', action: 'up', x: 10, y: 20, button: 'left' }, signal())
+    try {
+      expect(await Promise.race([release.then(() => 'released'), dragEntered.promise])).toBe('released')
+      expect(releases).toEqual([{ x: 10, y: 20 }])
+      expect(leftDown).toBe(false)
+      expect(context.newCDPSession).toHaveBeenCalledWith(page)
+      expect(mouse.move).not.toHaveBeenCalled()
+    } finally {
+      unblock.resolve()
+      await release
+      await browser.close()
+    }
+  })
+
+  it('redacts a rejected pointer dispatch, revokes uncertain state and never retries', async () => {
+    const send = vi.fn(async () => {
+      throw new Error(`${canary} ${endpoint}`)
+    })
+    const page = { on: vi.fn(), goto: async () => {}, url: () => policy.entryUrl }
+    const context = {
+      newPage: async () => page,
+      newCDPSession: vi.fn(async () => ({ send })),
+      close: vi.fn(async () => {}),
+      on: vi.fn(),
+      setDefaultTimeout: vi.fn(),
+      setDefaultNavigationTimeout: vi.fn(),
+      route: vi.fn(async () => {}),
+      routeWebSocket: vi.fn(async () => {}),
+    }
+    const publicBrowser = { newContext: async () => context, close: vi.fn(async () => {}) }
+    vi.doMock('playwright-core', () => ({ chromium: { connectOverCDP: async () => publicBrowser } }))
+    const f = fixture()
+    const browser = await createFixtureBrowserFactory({ runtime: f.runtime, policy, confirmLocalExecutionWorld: f.confirmLocalExecutionWorld })(signal())
+    const down: AuthInput = { kind: 'pointer', action: 'down', x: 10, y: 20, button: 'left' }
+    await expect(browser.input(down, signal())).rejects.toThrow(/^Synthetic fixture browser failed\.$/u)
+    await expect(browser.input(down, signal())).rejects.toThrow(/^Synthetic fixture browser failed\.$/u)
+    expect(send).toHaveBeenCalledTimes(1)
+    await browser.close()
+    expect(context.close).toHaveBeenCalledTimes(1)
+    expect(publicBrowser.close).toHaveBeenCalledTimes(1)
+    expect(f.handle.waitForExit).toHaveBeenCalled()
+    await expect(lstat(f.spec().cwd)).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
   it('configures the public Playwright boundary with fresh context, default-deny routes, no JS and no disk capture', async () => {
     // A module fake at the maintained library boundary: no browser process or socket exists.
     type RouteFixture = {
@@ -439,8 +530,10 @@ describe('explicit synthetic managed browser factory', () => {
       mouse: { move: vi.fn(async () => {}), down: vi.fn(async () => {}), up: vi.fn(async () => {}), wheel: vi.fn(async () => {}) },
       keyboard: { insertText: vi.fn(async () => {}), down: vi.fn(async () => {}), up: vi.fn(async () => {}) },
     }
+    const send = vi.fn(async (_method: 'Input.dispatchMouseEvent', _event: PointerEventFixture) => {})
     const context = {
       newPage: vi.fn(async () => page),
+      newCDPSession: vi.fn(async () => ({ send })),
       close: vi.fn(async () => {}),
       on: vi.fn(),
       setDefaultTimeout: vi.fn(),
@@ -478,8 +571,41 @@ describe('explicit synthetic managed browser factory', () => {
     await browser.input({ kind: 'pointer', action: 'down', x: 10, y: 20, button: 'left' }, completedDown.signal)
     completedDown.abort()
     await browser.input({ kind: 'pointer', action: 'up', x: 10, y: 20, button: 'left' }, signal())
-    expect(page.mouse.down).toHaveBeenCalledTimes(1)
-    expect(page.mouse.up).toHaveBeenCalledTimes(1)
+    expect(context.newCDPSession).toHaveBeenCalledExactlyOnceWith(page)
+    await browser.input({ kind: 'pointer', action: 'move', x: 15, y: 25, button: 'left' }, signal())
+    await browser.input({ kind: 'pointer', action: 'down', x: 15, y: 25, button: 'left' }, signal())
+    await browser.input({ kind: 'pointer', action: 'move', x: 30, y: 40, button: 'left' }, signal())
+    await browser.input({ kind: 'wheel', x: 35, y: 45, deltaX: 1, deltaY: 20 }, signal())
+    await browser.input({ kind: 'pointer', action: 'up', x: 50, y: 60, button: 'left' }, signal())
+    await browser.input({ kind: 'wheel', x: 55, y: 65, deltaX: 0, deltaY: -20 }, signal())
+    expect(send.mock.calls).toEqual([
+      ['Input.dispatchMouseEvent', { type: 'mousePressed', x: 10, y: 20, button: 'left', buttons: 1, clickCount: 1, modifiers: 0 }],
+      ['Input.dispatchMouseEvent', { type: 'mouseReleased', x: 10, y: 20, button: 'left', buttons: 0, clickCount: 1, modifiers: 0 }],
+      ['Input.dispatchMouseEvent', { type: 'mouseMoved', x: 15, y: 25, button: 'none', buttons: 0, clickCount: 0, modifiers: 0 }],
+      ['Input.dispatchMouseEvent', { type: 'mousePressed', x: 15, y: 25, button: 'left', buttons: 1, clickCount: 1, modifiers: 0 }],
+      ['Input.dispatchMouseEvent', { type: 'mouseMoved', x: 30, y: 40, button: 'left', buttons: 1, clickCount: 0, modifiers: 0 }],
+      ['Input.dispatchMouseEvent', { type: 'mouseWheel', x: 35, y: 45, buttons: 1, modifiers: 0, deltaX: 1, deltaY: 20 }],
+      ['Input.dispatchMouseEvent', { type: 'mouseReleased', x: 50, y: 60, button: 'left', buttons: 0, clickCount: 1, modifiers: 0 }],
+      ['Input.dispatchMouseEvent', { type: 'mouseWheel', x: 55, y: 65, buttons: 0, modifiers: 0, deltaX: 0, deltaY: -20 }],
+    ])
+    expect(page.mouse.move).not.toHaveBeenCalled()
+    expect(page.mouse.down).not.toHaveBeenCalled()
+    expect(page.mouse.up).not.toHaveBeenCalled()
+    expect(page.mouse.wheel).not.toHaveBeenCalled()
+    const sent = send.mock.calls.length
+    for (const input of [
+      { kind: 'pointer', action: 'down', x: 10, y: 20, button: 'right' },
+      { kind: 'pointer', action: 'up', x: 1280, y: 20, button: 'left' },
+      { kind: 'pointer', action: 'move', x: -1, y: 20, button: 'left' },
+      { kind: 'wheel', x: 10, y: 900, deltaX: 0, deltaY: 1 },
+    ] satisfies AuthInput[]) {
+      await expect(browser.input(input, signal())).rejects.toThrow(/^Synthetic fixture browser failed\.$/u)
+    }
+    expect(send).toHaveBeenCalledTimes(sent)
+    const aborted = new AbortController()
+    aborted.abort()
+    await expect(browser.input({ kind: 'pointer', action: 'down', x: 10, y: 20, button: 'left' }, aborted.signal)).rejects.toThrow()
+    expect(send).toHaveBeenCalledTimes(sent)
     expect(context.close).not.toHaveBeenCalled()
     expect(publicBrowser.close).not.toHaveBeenCalled()
     if (routed === undefined || socketHandler === undefined) throw new Error('Missing default-deny routes')

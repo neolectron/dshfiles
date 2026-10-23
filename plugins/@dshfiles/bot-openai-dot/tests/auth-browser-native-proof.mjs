@@ -428,7 +428,7 @@ async function fixtureHost() {
   }
   for (const action of ['down', 'up']) {
     summary.stage = `input-field-pointer-${action}`
-    await mappedInput({ kind: 'pointer', action, x: 100, y: 60, button: 'left' }, deadline.signal)
+    await mappedInput({ kind: 'pointer', action, x: action === 'up' ? 110 : 100, y: 60, button: 'left' }, deadline.signal)
   }
   const text = `synthetic-${randomUUID()}`
   summary.stage = 'input-text'

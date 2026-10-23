@@ -21,7 +21,7 @@ No Go, Matrix bridge, daemon, dependency tree, proxy rotation, browser/cookie ex
 
 ## Fixture-only human viewer port
 
-The new authentication attempt/transport/viewer/worker sources are **unwired, source/fixture-only**. They do not implement or prove production sign-in or credential capture. Reviewed pixel-coordinate and keyboard/IME mechanics are narrowly ported from MIT `drscrewdriver/dsh-browser-cdp` at `da9891b9c8ee64b6c4da16d3ae654d0f1166cccd`; the complete original notice, exact hashes, excluded unsafe subsystems and update policy are in [NOTICE.md](NOTICE.md). Never install its general browser bundle or reuse its cookie-presence authentication, profile import/discovery, control listener, tools or teardown.
+The new authentication attempt/transport/viewer/worker sources are **unwired, source/fixture-only**. They do not implement or prove production sign-in or credential capture. Reviewed pixel-coordinate, keyboard/IME and fixed page-owned mouse-event dispatch mechanics are narrowly ported from MIT `drscrewdriver/dsh-browser-cdp` at `da9891b9c8ee64b6c4da16d3ae654d0f1166cccd`; the complete original notice, exact hashes, excluded unsafe subsystems and update policy are in [NOTICE.md](NOTICE.md). Never install its general browser bundle or reuse its cookie-presence authentication, profile import/discovery, control listener, tools or teardown.
 
 The managed worker currently accepts only an explicit synthetic local fixture policy, disables JavaScript and requires positive execution-world evidence. That is deliberately not a usable ChatGPT authentication policy. Real native admission, browser rendering, privacy/egress, diagnostics and full-range cleanup remain separate proof gates.
 

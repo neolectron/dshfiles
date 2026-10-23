@@ -10,6 +10,10 @@ Configuration has exactly two required reference fields: `accessTokenRef` and `s
 
 Credentials are broad ChatGPT account authority, **not** provider-enforced Dot-only scope. This unsupported protocol can break or be denied at any time. Access JWT decoding is a binding hint, **not signature validation or authorization**. Successful provider discovery plus exact two-member room verification authorizes the Dot messaging room.
 
+### Web-only sign-in work is not activated
+
+The source tree also contains a narrowly ported human raster viewer and a managed synthetic browser worker. They are **not** wired into this Host entry or advertised as completed onboarding. Genuine native authentication and a fake-page real-GUI journey pass; a loopback-only namespace independently proves renderer sandboxing and cleanup. That does not establish provider egress, actual ChatGPT login or a real Dot reply. The earlier public provider entry returned403; no challenge bypass, profile import or manual token-hunting fallback is implemented. Track remaining input and isolation gates in the [completion plan](../../../plans/durable-bots/web-sign-in.md); the MIT viewer/input notice is retained in [NOTICE.md](NOTICE.md).
+
 ### Optional managed renewal (default off)
 
 Without Core's separate explicit credential-management grant and post-verification `bindCredentialReferences` call, renewal remains memory-only: **zero vault writes**, even if the Host store is available. Reconnecting resolves the original references again; manual reauthorization may be necessary. Discovery can renew in memory, but cannot publish or persist credentials before Core verifies and durably saves identity.

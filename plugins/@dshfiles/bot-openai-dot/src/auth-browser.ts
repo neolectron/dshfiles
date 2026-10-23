@@ -287,6 +287,45 @@ const playwrightIO: FixtureBrowserIO = {
         if (!allowedUrl(frame.url(), policy)) revoke()
       })
       await page.goto(policy.entryUrl, { waitUntil: 'domcontentloaded', timeout: DEADLINE_MS })
+      // Port of capture-cdp.ts:78-85 (dot-auth-viewer da9891b9; MIT, see NOTICE).
+      // Only this newly owned page is attached. The session stays private and dies
+      // with its context/browser; existing native cleanup joins remain mandatory.
+      // Playwright 1.56.1 mouse.move enters a JS drag manager while left is down,
+      // incompatible with this fixture's JS-disabled policy, even for repeat UP.
+      const pointer = await context.newCDPSession(page)
+      let leftDown = false
+      const pointerInput = async (input: Extract<AuthInput, { kind: 'pointer' | 'wheel' }>) => {
+        try {
+          if (input.kind === 'wheel') {
+            await pointer.send('Input.dispatchMouseEvent', {
+              type: 'mouseWheel',
+              x: input.x,
+              y: input.y,
+              buttons: leftDown ? 1 : 0,
+              modifiers: 0,
+              deltaX: input.deltaX,
+              deltaY: input.deltaY,
+            })
+          } else {
+            const pressed = input.action === 'move' ? leftDown : input.action === 'down'
+            await pointer.send('Input.dispatchMouseEvent', {
+              type: input.action === 'move' ? 'mouseMoved' : input.action === 'down' ? 'mousePressed' : 'mouseReleased',
+              x: input.x,
+              y: input.y,
+              button: input.action === 'move' && !pressed ? 'none' : 'left',
+              buttons: pressed ? 1 : 0,
+              clickCount: input.action === 'move' ? 0 : 1,
+              modifiers: 0,
+            })
+            leftDown = pressed
+          }
+        } catch {
+          // A rejected command may already have reached Chromium. Do not retry or
+          // accept further input with an uncertain button state.
+          revoke()
+          throw new Error(FAILED)
+        }
+      }
       return {
         async frame(signal) {
           signal.throwIfAborted()
@@ -300,13 +339,8 @@ const playwrightIO: FixtureBrowserIO = {
           if (!allowedUrl(page.url(), policy)) throw new Error(FAILED)
           switch (input.kind) {
             case 'pointer':
-              await page.mouse.move(input.x, input.y)
-              if (input.action === 'down') await page.mouse.down({ button: 'left' })
-              if (input.action === 'up') await page.mouse.up({ button: 'left' })
-              break
             case 'wheel':
-              await page.mouse.move(input.x, input.y)
-              await page.mouse.wheel(input.deltaX, input.deltaY)
+              await pointerInput(input)
               break
             case 'text':
               await page.keyboard.insertText(input.text)
