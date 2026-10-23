@@ -5,6 +5,9 @@
   "description": "Browse and manage secret CLI aliases for the selected project, without values crossing to the Client.",
   "files": [
     "dist",
+    "src/api.ts",
+    "src/secret-arguments.ts",
+    "src/secret-metadata.ts",
     "cordis.patch.yml"
   ],
   "type": "module",
@@ -12,6 +15,10 @@
   "exports": {
     ".": "./dist/index.js",
     "./client": "./dist/client.js",
+    "./api": {
+      "types": "./src/api.ts",
+      "default": "./dist/api.js"
+    },
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./package.json": "./package.json"
   },

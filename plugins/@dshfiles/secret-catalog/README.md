@@ -111,6 +111,34 @@ value crosses to the Client or enters the account JSON. Manual entry through
 DSH's write-only credential controller remains available when Secret Catalog is
 not installed.
 
+## Public API for Host consumers
+
+Import `secretCatalogApi` from `@dshfiles/secret-catalog/api` and call
+`createHostApiClient(ctx, secretCatalogApi, callerPackageId)` from
+`@dshfiles/dshx/host`. The contract explicitly belongs to
+`@dshfiles/secret-catalog`; it is the same version-1 API used by the Catalog
+Client, not a second credential API. Its dshx module builds to `dist/api.js`,
+while the package publishes the contract's source and local schema dependencies
+for TypeScript. Consumers must not deep-import Catalog sources or copy schemas.
+Use `client.safe.create(...)` / `client.safe.update(...)` and
+`isApiOwnerMissing` from `@dshfiles/dshx/api` to handle an absent Catalog.
+
+A credential-producing Host consumer must keep raw values on the Host: pass a
+single scalar through the existing manual `create` or `update` input, receive
+only `{ created: true }` or `{ updated: true }`, and expose only safe status and
+references to its Client. The operations send raw values to CLI stdin, not argv
+or captured output. No new operation, agent tool, request logging, authentication
+capture, or token persistence is introduced by publishing this contract.
+
+This is only a source-level prerequisite for Dot credential lifecycle work.
+Scalar calls do **not** provide an atomic session/refresh-token pair, rollback,
+or compare-and-swap guarantees; a later lifecycle design must address partial
+writes and failed refreshes before real credential persistence. Account and
+link-device decisions still require answers. The focused public-consumer test
+uses the installed SDK's in-process Host registry, the existing operations and
+an injected synthetic runner; no real CLI, vault, account, browser, or live
+profile is used.
+
 ## Machine and Host boundary
 
 The machine control identifies the current DSH Host using its OS hostname and

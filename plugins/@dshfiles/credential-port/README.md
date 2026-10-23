@@ -11,6 +11,12 @@ Turbo fail with a task cycle.
 
 A consumer treats a missing provider as "catalog unavailable" rather than failing the plugin, so the port is optional.
 
+## Runtime distribution
+
+This is a dependency-only TypeScript library, not a Cordis bundle. `build` emits ordinary ESM and declarations into `dist/`; the public runtime export points to JavaScript while type consumers retain the source contract. This matters for Secret Catalog's public API and other unbundled Host consumers: a raw TypeScript entry with `.js` sibling imports only worked when a bundler rewrote those imports.
+
+`test` builds first and includes an ordinary-Node consumer regression, with no credential reads or provider calls. The reference schemas and resolver behavior are unchanged.
+
 ## Scripts
 
 ```sh

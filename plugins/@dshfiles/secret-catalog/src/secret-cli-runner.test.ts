@@ -1,4 +1,4 @@
-import { Writable } from 'node:stream'
+import { Readable, Writable } from 'node:stream'
 import type { SubprocessHandle, SubprocessRuntime, SubprocessSpawnSpec } from '@deepseek-ai/dsh-subprocess'
 import { describe, expect, it, vi } from 'vitest'
 import { runSecretCli } from './secret-cli-runner.js'
@@ -21,8 +21,8 @@ const harness = (options: { readonly exitCode?: number | null; readonly lossy?: 
   })
   const handle: SubprocessHandle = {
     stdin,
-    stdout: undefined,
-    stderr: undefined,
+    stdout: Readable.from([options.output ?? 'synthetic mutation output']),
+    stderr: Readable.from(['synthetic diagnostic output']),
     control: undefined,
     collected: {
       stdout: {
@@ -66,7 +66,8 @@ describe('managed secret CLI runner', () => {
     expect(test.spec()?.argv).toEqual(['/nix/store/secret-cli/bin/secret', 'set', 'SYNTHETIC_TOKEN', '--env', 'dev'])
     expect(test.spec()?.cwd).toBe('/private/tmp/project')
     expect(test.spec()?.env).toEqual({ BW_SESSION: 'synthetic-session-token', SECRET_SESSION_FILE: '/private/tmp/synthetic-secret-session' })
-    expect(test.spec()?.stdio).toEqual({ stdin: 'pipe', stdout: { maxBytes: 1_000_000 }, stderr: { maxBytes: 1 } })
+    expect(test.spec()?.stdio).toEqual({ stdin: 'pipe', stdout: { maxBytes: 1_000_000 }, stderr: 'pipe' })
+    expect(test.handle.stderr?.readableFlowing).toBe(true)
     expect(test.stdin()).toBe('synthetic-secret-value')
     expect(test.handle.waitForExit).toHaveBeenCalledOnce()
   })
@@ -84,9 +85,46 @@ describe('managed secret CLI runner', () => {
     )
 
     expect(result).toBe('')
-    expect(test.spec()?.stdio.stdout).toEqual({ maxBytes: 1 })
-    expect(test.spec()?.stdio.stderr).toEqual({ maxBytes: 1 })
+    expect(test.spec()?.stdio.stdout).toBe('pipe')
+    expect(test.spec()?.stdio.stderr).toBe('pipe')
+    expect(test.handle.stdout?.readableFlowing).toBe(true)
+    expect(test.handle.stderr?.readableFlowing).toBe(true)
     expect(test.spec()?.env).toEqual({})
+  })
+
+  it('rejects a diagnostic stream failure that arrives while waiting for the process range', async () => {
+    const test = harness()
+    vi.mocked(test.handle.waitForExit).mockImplementationOnce(async () => {
+      test.handle.stderr?.emit('error', new Error('synthetic-private-diagnostic'))
+      return true
+    })
+    await expect(runSecretCli(test.runtime, { args: ['set', 'SYNTHETIC_TOKEN'], cwd: null, captureStdout: false }, {})).rejects.toThrow(
+      'Secret CLI command failed.',
+    )
+    expect(test.handle.terminate).toHaveBeenCalledOnce()
+  })
+
+  it('bounds stdin write errors through cancellation without exposing input diagnostics', async () => {
+    const test = harness()
+    let handled = false
+    vi.mocked(test.handle.waitForExit).mockImplementationOnce(async () => {
+      handled = test.handle.stdin?.emit('error', new Error('synthetic-private-stdin-detail')) ?? false
+      return true
+    })
+    await expect(
+      runSecretCli(test.runtime, { args: ['set', 'SYNTHETIC_TOKEN'], cwd: null, captureStdout: false, stdin: 'synthetic-value' }, {}),
+    ).rejects.toThrow('Secret CLI command failed.')
+    expect(handled && test.spec()?.signal?.aborted).toBe(true)
+  })
+
+  it('never exposes provider diagnostics when process termination itself fails', async () => {
+    const test = harness({ exitCode: 2 })
+    vi.mocked(test.handle.terminate).mockImplementation(() => {
+      throw new Error('synthetic-private-termination-detail')
+    })
+    await expect(runSecretCli(test.runtime, { args: ['set', 'SYNTHETIC_TOKEN'], cwd: null, captureStdout: false }, {})).rejects.toThrow(
+      new Error('Secret CLI command failed. Process cleanup could not be confirmed.'),
+    )
   })
 
   it('terminates the managed process range and returns only a generic error for failed or oversized output', async () => {

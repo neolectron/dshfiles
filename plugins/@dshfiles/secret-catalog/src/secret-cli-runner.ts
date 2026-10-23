@@ -11,8 +11,8 @@ const RANGE_WAIT_MS = 5_000
 type SecretSubprocess = Pick<SubprocessRuntime, 'resolveExecutable' | 'spawn'>
 type SecretSessionEnvironment = Partial<Pick<NodeJS.ProcessEnv, 'BW_SESSION' | 'SECRET_SESSION_FILE'>>
 
-const sessionEnvironment = (source: SecretSessionEnvironment): Record<string, string> => {
-  const result: Record<string, string> = {}
+const sessionEnvironment = (source: SecretSessionEnvironment) => {
+  const result: Partial<Record<'BW_SESSION' | 'SECRET_SESSION_FILE', string>> = {}
   if (source.BW_SESSION !== undefined && source.BW_SESSION.length > 0) result.BW_SESSION = source.BW_SESSION
   if (source.SECRET_SESSION_FILE !== undefined && source.SECRET_SESSION_FILE.length > 0) result.SECRET_SESSION_FILE = source.SECRET_SESSION_FILE
   return result
@@ -41,29 +41,40 @@ export const runSecretCli = async (
       env,
       stdio: {
         stdin: request.stdin === undefined ? 'ignore' : 'pipe',
-        stdout: { maxBytes: request.captureStdout ? MAX_STDOUT_BYTES : 1 },
-        stderr: { maxBytes: 1 },
+        stdout: request.captureStdout ? { maxBytes: MAX_STDOUT_BYTES } : 'pipe',
+        stderr: 'pipe',
       },
       graceMs: 1_000,
       signal: controller.signal,
     })
+    // Raw pipes are not retained by the managed service. Drain unwanted output rather than keeping even a one-byte diagnostic tail.
+    if (handle.stderr === undefined || (!request.captureStdout && handle.stdout === undefined)) throw new Error('Secret CLI output pipes were unavailable.')
+    handle.stderr.once('error', () => controller.abort()).resume()
+    if (!request.captureStdout) handle.stdout?.once('error', () => controller.abort()).resume()
     if (request.stdin !== undefined) {
       if (handle.stdin === undefined) throw new Error('Secret CLI stdin was unavailable.')
-      handle.stdin.end(request.stdin)
+      handle.stdin.once('error', () => controller.abort()).end(request.stdin)
     }
     const outcome = await handle.done
     if (controller.signal.aborted) throw new Error('Secret CLI command deadline elapsed.')
     if (!(await waitForManagedExit({ handle, timeoutMs: RANGE_WAIT_MS }))) throw new Error('Secret CLI process range did not exit.')
+    if (controller.signal.aborted) throw new Error('Secret CLI command was cancelled while awaiting its process range.')
     if (outcome.exitCode !== 0) throw new Error('Secret CLI command returned a failure status.')
     if (!request.captureStdout) return ''
     const output = handle.collected.stdout?.readFrom(0)
     if (output === undefined || output.lossy) throw new Error('Secret CLI response exceeded the safe size limit.')
     return output.text
   } catch {
+    let cleanupConfirmed = true
     if (handle !== undefined) {
-      await terminateManagedProcess({ handle, timeoutMs: RANGE_WAIT_MS })
+      try {
+        cleanupConfirmed = await terminateManagedProcess({ handle, timeoutMs: RANGE_WAIT_MS })
+      } catch {
+        cleanupConfirmed = false
+      }
     }
-    throw new Error(timedOut ? 'Secret CLI command timed out.' : 'Secret CLI command failed.')
+    const failure = timedOut ? 'Secret CLI command timed out.' : 'Secret CLI command failed.'
+    throw new Error(cleanupConfirmed ? failure : `${failure} Process cleanup could not be confirmed.`)
   } finally {
     clearTimeout(timeout)
   }

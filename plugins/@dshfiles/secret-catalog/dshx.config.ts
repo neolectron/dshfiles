@@ -3,6 +3,7 @@ import { defineConfig } from '@dshfiles/dshx'
 
 export default defineConfig({
   name: '@dshfiles/secret-catalog',
+  modules: { api: 'src/api.ts' },
   host: { entry: 'src/host.ts', bundleDependencies: ['@dshfiles/credential-port'] },
   client: {
     entry: 'src/client.tsx',

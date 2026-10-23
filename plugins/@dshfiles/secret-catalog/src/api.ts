@@ -8,6 +8,7 @@ const cwdSchema = z.string().max(4096).nullable()
 export const secretCatalogApi = defineApi({
   id: 'secret-catalog',
   version: 1,
+  owner: '@dshfiles/secret-catalog',
   methods: {
     list: method({ input: z.object({ cwd: cwdSchema }), output: z.array(secretMetadataSchema).max(5000) }),
     reveal: method({
