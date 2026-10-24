@@ -2,7 +2,7 @@
 
 A normal Node.js HTTP app for provider-neutral Bots, with one engine, one durable store and provider adapters. It does not launch DSH, require a desktop helper, or create a replacement bot.
 
-**Current runner has no provider adapters configured.** It exposes an honestly empty roster. Real Dot authentication and the DSH client connection are not finished; the successful Yield UI exchange is not a backend test.
+**Current runner has no provider adapters configured.** It exposes an honestly empty roster. Real provider composition/authentication and live DSH activation are not finished; the Host's HTTP client is synthetic real-HTTP verified; the successful Yield UI exchange is not a backend test.
 
 ## Build and run
 
@@ -31,4 +31,8 @@ The fork's lock currently forces Cordis4.0.4 while the installed storage package
 
 Tests use only synthetic values and private temporary directories. They cover normal Node readiness/HTTP authentication, revision persistence across process restart, SIGTERM lease release, refusal of missing/public/symlink token files, redacted failures and cleanup. The reusable Bots runtime tests additionally verify real JSON send tombstones/retry, owner exclusivity, malformed-state preservation and replaced-lease refusal.
 
-Not verified: a real Dot adapter session, backend renewal, DSH remote-client wiring or live deployment. No real message may be sent using the already-consumed Yield UI test authorization.
+The DSH Host has an explicit profile-owned service placement mode with a per-request service-credential reference. It opens no local Bots domain/workers, never falls back to local on network failure, and does not stop this app on Host disposal. The Host still needs its existing storageDomain service activated, although it does not use that service for Bots data in service mode. This is not a live settings toggle or automatic migration.
+
+Provider references must resolve at this app's worker. DSH vault aliases and provider values are not automatically available here; that provisioning/onboarding boundary is still unfinished. The Host-to-service credential is not a ChatGPT credential.
+
+Not verified: a real Dot adapter session, backend renewal, browser UI in remote placement or live deployment. No real message may be sent using the already-consumed Yield UI test authorization.

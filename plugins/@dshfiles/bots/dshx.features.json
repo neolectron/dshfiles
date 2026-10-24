@@ -193,7 +193,7 @@
     {
       "id": "node-http-boundary",
       "title": "An embeddable Node HTTP boundary over one Bots engine",
-      "summary": "Run one provider-neutral Bots engine behind authenticated server-to-server HTTP using an injected exclusive store and adapter registry. This is not a proxy to DSH, finished Docker packaging or real provider authentication.",
+      "summary": "Run one provider-neutral Bots engine behind authenticated server-to-server HTTP with durable private storage. A normal Node CLI and container smoke are verified. DSH can explicitly select a canonical HTTP client instead of its local engine; failure never starts a second owner. Real provider authentication and live deployment remain unverified.",
       "surfaces": ["host", "storage", "integration"],
       "configuration": [],
       "states": ["unauthorized", "listening", "connected", "delivery-uncertain", "closed"],
@@ -201,7 +201,9 @@
         "Missing or invalid bearer authentication is rejected before a route performs a domain operation; browser Origin headers and query credentials are rejected.",
         "Malformed, oversized, encoded or unfinished request bodies fail within fixed transport bounds without reflecting input or provider diagnostics.",
         "A retry keeps the original request UUID. A changed body is refused and uncertain delivery is never automatically resent.",
-        "The caller owns durable storage and adapter registration; do not run this engine concurrently with a DSH engine over the same data."
+        "The caller owns durable storage and adapter registration; do not run this engine concurrently with a DSH engine over the same data.",
+        "Service-mode DSH resolves its own service credential on each request and opens no local Bots domain or provider worker. Invalid or unavailable service placement never falls back to local ownership.",
+        "Provider credential references must be available at the service worker; DSH vault aliases and values are not automatically copied to it."
       ],
       "externalDependencies": [],
       "verification": [
@@ -240,6 +242,24 @@
           "id": "bots.node-malformed-state",
           "file": "plugins/@dshfiles/bots/src/node-runtime.test.ts",
           "testName": "refuses malformed canonical JSON without overwriting it or leaking its content"
+        },
+        {
+          "kind": "unit-test",
+          "id": "bots.service-host-sole-owner",
+          "file": "plugins/@dshfiles/bots/src/host-service.test.ts",
+          "testName": "delegates the existing Host API to one remote owner without opening local storage or workers"
+        },
+        {
+          "kind": "unit-test",
+          "id": "bots.service-host-no-fallback",
+          "file": "plugins/@dshfiles/bots/src/host-service.test.ts",
+          "testName": "never falls back to a local engine when the configured service is unavailable"
+        },
+        {
+          "kind": "unit-test",
+          "id": "bots.service-client-uncertain-response",
+          "file": "plugins/@dshfiles/bots/src/http-client.test.ts",
+          "testName": "does not resend when a real accepted send loses its HTTP response"
         }
       ]
     }
