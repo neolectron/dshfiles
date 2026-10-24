@@ -2,9 +2,9 @@
 
 ## Current acceptance status
 
-**Not complete and not deployed.** The genuine existing Dot has not been linked, no approved real test has been sent, and no real reply/incoming/reconnect/renewal has been observed. A source-only viewer is not finished sign-in.
+**Not complete and not deployed.** Updated2026-10-24: the [real UI proof](real-ui-proof.md) verifies reading existing Yield messages, the one approved real test and **OK** reply, new incoming and normal browser reload with a single test occurrence. The one-message authorization has been consumed. This was ordinary desktop/browser interaction, not the backend adapter or DSH connection; protocol identity, durable backend reconnect and renewal remain unverified. A source-only viewer or manual UI success is not finished service onboarding.
 
-The user authorized broad ChatGPT-account linking and exactly **DSH connection test — please reply OK**, and requires sign-in entirely in this Web GUI. The subsequent permission question for dedicated local browser/proxy containers remains unanswered through automatic rounds6–8. A timeout is not consent. Do not download/build images or create networks until the user answers.
+The user authorized broad ChatGPT-account linking and the single now-used test, and requires product sign-in entirely in this Web GUI. Their later answer corrects the architecture to a normal reusable Node.js Bots service with HTTP interfaces, deployable in Docker—not a Dot-specific proxy/container appliance. Historical unanswered-container notes below describe the earlier stop and are superseded by that correction and the current [resume point](README.md). No specialized proxy stack, existing-session extraction or live restart is thereby authorized.
 
 ## Completed proof
 
