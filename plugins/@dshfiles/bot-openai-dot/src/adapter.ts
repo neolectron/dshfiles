@@ -10,6 +10,7 @@ import { DotCredentials, type DotCredentialStore } from './credentials.js'
 import { baselinePageSchema, messageSchema, pageSchema, primarySchema, profileSchema, roomSchema, verifyRoom, type Message } from './protocol.js'
 
 const configSchema = z.object({ accessTokenRef: secretReferenceSchema, sessionTokenRef: secretReferenceSchema }).strict()
+const accountConfigSchema = z.object({ accountId: z.string().trim().min(1).max(64) }).strict()
 const requestIdSchema = z.string().uuid()
 const pollCursorSchema = z
   .object({
@@ -47,15 +48,21 @@ const protocolFailure = (): BotAdapterError =>
   new BotAdapterError('protocol-error', 'Dot returned an unsafe message page; checkpoint retained. Use native ChatGPT.')
 const unknownDelivery = (): BotAdapterError =>
   new BotAdapterError('delivery-unknown', 'Dot delivery is unknown. Reconcile this original request before retrying.')
-export interface DotDependencies {
-  /** Host-only seam. Receives canonical reference text, never browser input or a raw credential configuration. */
-  readonly resolveSecret: (reference: string) => Promise<string | undefined>
-  readonly store?: DotCredentialStore
+export interface DotAccountAccess {
+  /** Owner-bound backend capability. Never serialize the returned token into a Client/API/tool response. */
+  readAccessToken(accountId: string, signal: AbortSignal): Promise<string>
+}
+export type DotDependencies = {
   readonly fetch?: HttpFetch
   readonly now?: () => number
-}
+} & (
+  | { readonly resolveSecret: (reference: string) => Promise<string | undefined>; readonly store?: DotCredentialStore; readonly accountAccess?: never }
+  | { readonly accountAccess: DotAccountAccess; readonly resolveSecret?: never; readonly store?: never }
+)
 
 export function createDotAdapter(dependencies: DotDependencies): BotAdapter {
+  if (dependencies.accountAccess !== undefined && (dependencies.resolveSecret !== undefined || dependencies.store !== undefined))
+    throw new BotAdapterError('auth-required', 'Dot account access cannot be combined with stored credential authority.')
   const now = dependencies.now ?? Date.now
   const adapter: BotAdapter = {
     info: {
@@ -83,22 +90,36 @@ export function createDotAdapter(dependencies: DotDependencies): BotAdapter {
     },
     pollIntervalMs: 3000,
     validateConfig(config) {
+      if (dependencies.accountAccess !== undefined) {
+        if (!accountConfigSchema.safeParse(config).success)
+          throw new BotAdapterError('auth-required', 'Dot account mode requires exactly one configured OpenAI account ID.')
+        return
+      }
       if (!configSchema.safeParse(config).success)
         throw new BotAdapterError('auth-required', 'Dot requires exactly two valid secret reference fields, not raw credentials.')
     },
     async open(input): Promise<BotAdapterSession> {
-      const config = configSchema.safeParse(input.config)
-      if (!config.success) throw new BotAdapterError('auth-required', 'Dot requires accessTokenRef and sessionTokenRef secret references.')
       if (input.signal.aborted) throw new BotAdapterError('unavailable', 'Dot connection was canceled.')
-      const credentials = new DotCredentials(input.config, input.connectionId, dependencies.resolveSecret, dependencies.store, input.signal)
-      let pair
-      try {
-        pair = await credentials.load(formatSecretReference(config.data.accessTokenRef), formatSecretReference(config.data.sessionTokenRef))
-      } catch (error) {
-        if (error instanceof BotAdapterError && error.code === 'identity-mismatch') throw error
-        throw new BotAdapterError('auth-required', 'Dot could not resolve the configured secret references on the Host.')
+      let credentials: DotCredentials | undefined
+      let http: DotHttp
+      if (dependencies.accountAccess !== undefined) {
+        const config = accountConfigSchema.safeParse(input.config)
+        if (!config.success) throw new BotAdapterError('auth-required', 'Dot account mode requires exactly one configured OpenAI account ID.')
+        http = await DotHttp.openAccount(config.data.accountId, dependencies.accountAccess, dependencies.fetch ?? globalThis.fetch, now, input.signal)
+      } else {
+        const config = configSchema.safeParse(input.config)
+        if (!config.success) throw new BotAdapterError('auth-required', 'Dot requires accessTokenRef and sessionTokenRef secret references.')
+        credentials = new DotCredentials(input.config, input.connectionId, dependencies.resolveSecret, dependencies.store, input.signal)
+        let pair
+        try {
+          pair = await credentials.load(formatSecretReference(config.data.accessTokenRef), formatSecretReference(config.data.sessionTokenRef))
+        } catch (error) {
+          if (error instanceof BotAdapterError && error.code === 'identity-mismatch') throw error
+          throw new BotAdapterError('auth-required', 'Dot could not resolve the configured secret references on the Host.')
+        }
+        http = new DotHttp(pair, dependencies.fetch ?? globalThis.fetch, now, { assertActive: credentials.assertActive, renewed: credentials.renewed })
       }
-      const http = new DotHttp(pair, dependencies.fetch ?? globalThis.fetch, now, { assertActive: credentials.assertActive, renewed: credentials.renewed })
+      const run = <Result>(operation: () => Promise<Result>): Promise<Result> => (credentials === undefined ? operation() : credentials.run(operation))
       try {
         input.signal.throwIfAborted()
         const primary = await http.api('/tbo/primary', primarySchema, input.signal)
@@ -168,7 +189,7 @@ export function createDotAdapter(dependencies: DotDependencies): BotAdapter {
         const accountId = createHash('sha256')
           .update(JSON.stringify([http.identity.account, http.identity.user, http.identity.accountUser ?? null, members.human, members.dot]))
           .digest('hex')
-        credentials.verifyAccount(accountId)
+        credentials?.verifyAccount(accountId)
         const session: BotAdapterSession = {
           accountId,
           bots: [
@@ -250,26 +271,44 @@ export function createDotAdapter(dependencies: DotDependencies): BotAdapter {
             return { kind: 'unknown' }
           },
           async close() {
-            credentials.close()
+            credentials?.close()
             http.close()
           },
         }
-        if (dependencies.store !== undefined) session.bindCredentialReferences = bind => credentials.run(() => credentials.bind(bind))
+        if (credentials !== undefined && dependencies.store !== undefined) {
+          session.bindCredentialReferences = bind =>
+            run(async () => {
+              if (credentials === undefined) throw new BotAdapterError('auth-required', 'Credential management requires a backend credential store.')
+              await credentials.bind(bind)
+            })
+        }
         return {
           ...session,
-          poll: request => credentials.run(() => session.poll(request)),
-          send: request => credentials.run(() => session.send(request)),
-          reconcile: request => credentials.run(() => session.reconcile(request)),
+          poll: request => run(() => session.poll(request)),
+          send: request => run(() => session.send(request)),
+          reconcile: request => run(() => session.reconcile(request)),
         }
       } catch (error) {
-        credentials.close()
+        credentials?.close()
         http.close()
         if (error instanceof BotAdapterError) throw error
         throw new BotAdapterError('unavailable', 'Dot connection was canceled or unavailable.')
       }
     },
   }
-  if (dependencies.store !== undefined) {
+  if (dependencies.accountAccess !== undefined) {
+    adapter.info.fields = [
+      {
+        key: 'accountId',
+        label: 'DSH OpenAI account ID',
+        kind: 'text',
+        required: true,
+        help: 'The exact authorized account ID in this backend. Its owner reads the current login; no token, cookie or pool fallback is supplied here.',
+      },
+    ]
+    adapter.info.risk =
+      'This unsupported private ChatGPT protocol may stop working or be denied. The selected OpenAI login grants broad account authority, not a Dot-only scope. Its owner supplies short-lived access only in backend memory. No cookie, session renewal, credential copy or cross-account fallback is performed. Expiry, account changes or denial stop the connection; the account owner must recover it explicitly. Only messages since linking are synchronized. Approvals and media require native ChatGPT. All admitted DSH browsers share the owner account authority.'
+  } else if (dependencies.store !== undefined) {
     adapter.info.credentialManagement = {
       label: 'Keep Dot credentials renewed in the vault',
       description:

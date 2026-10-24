@@ -4,6 +4,7 @@ import type { z } from 'zod'
 import { JsonText } from '@dshfiles/dshx/api'
 import { BotAdapterError } from '@dshfiles/bots/adapter'
 import { decodeIdentity, DotCharacterPolicy, renewalSchema, type Identity } from './protocol.js'
+import type { DotAccountAccess } from './adapter.js'
 
 export interface Credentials {
   accessToken: string
@@ -27,16 +28,54 @@ const fail = (code: keyof typeof messages): BotAdapterError => new BotAdapterErr
 const permittedPath =
   /^(?:\/api\/auth\/session|\/backend-api\/(?:tbo\/primary|tbo\/by-thread\/[^/?#]+|messaging\/rooms\/[^/?#]+(?:\/messages(?:\?limit=(?:1|32)(?:&after=[^&#]*)?)?)?))$/u
 
+interface AccountCredentials {
+  accessToken: string
+  readonly accountId: string
+  readonly accountAccess: DotAccountAccess
+}
+const accountFailure = (): BotAdapterError =>
+  new BotAdapterError('auth-required', 'The selected OpenAI login is unavailable or expired. Recover it through its account owner and reconnect.')
+const readAccountToken = async (accountAccess: DotAccountAccess, accountId: string, signal: AbortSignal): Promise<string> => {
+  try {
+    const token = await accountAccess.readAccessToken(accountId, signal)
+    if (signal.aborted) throw fail('unavailable')
+    return token
+  } catch {
+    throw signal.aborted ? fail('unavailable') : accountFailure()
+  }
+}
+/** Also races an owner callback or fetch implementation that ignores AbortSignal; late results cannot authorize I/O. */
+const withAccessDeadline = async <Result>(parent: AbortSignal, operation: (signal: AbortSignal) => Promise<Result>): Promise<Result> => {
+  const controller = new AbortController()
+  const signal = AbortSignal.any([parent, controller.signal])
+  if (signal.aborted) throw fail('unavailable')
+  const timer = setTimeout(() => controller.abort(), 15000)
+  timer.unref()
+  const cancelled = new Promise<never>((_resolve, reject) => signal.addEventListener('abort', () => reject(fail('unavailable')), { once: true }))
+  try {
+    return await Promise.race([
+      Promise.resolve().then(() => {
+        if (signal.aborted) throw fail('unavailable')
+        return operation(signal)
+      }),
+      cancelled,
+    ])
+  } finally {
+    clearTimeout(timer)
+    controller.abort()
+  }
+}
+
 /** Host-only credentials; optional explicitly granted persistence stays behind a provider-owned port. */
 export class DotHttp {
   readonly identity: Identity
-  private credentials: Credentials
+  private credentials: Credentials | AccountCredentials
   private refreshing: Promise<void> | undefined
   private expires: number
   private readonly lifetime = new AbortController()
   private failed = false
   constructor(
-    credentials: Credentials,
+    credentials: Credentials | AccountCredentials,
     private readonly fetcher: HttpFetch,
     private readonly now: () => number,
     private readonly lifecycle?: { assertActive(): void; renewed(pair: Credentials): Promise<void> },
@@ -44,16 +83,35 @@ export class DotHttp {
     this.credentials = { ...credentials }
     this.identity = decodeIdentity(credentials.accessToken)
     this.expires = this.identity.expires
-    this.validateSession(credentials.sessionToken)
+    if ('sessionToken' in credentials) this.validateSession(credentials.sessionToken)
+    else if (this.expires <= this.now()) throw fail('auth-required')
+  }
+  static async openAccount(accountId: string, accountAccess: DotAccountAccess, fetcher: HttpFetch, now: () => number, signal: AbortSignal): Promise<DotHttp> {
+    try {
+      return await withAccessDeadline(signal, async bounded => {
+        const accessToken = await readAccountToken(accountAccess, accountId, bounded)
+        return new DotHttp({ accessToken, accountId, accountAccess }, fetcher, now)
+      })
+    } catch (error) {
+      if (error instanceof BotAdapterError && error.code === 'unavailable') throw error
+      throw accountFailure()
+    }
   }
   close(): void {
     this.lifetime.abort()
-    this.credentials = { accessToken: '', sessionToken: '' }
+    this.credentials.accessToken = ''
+    if ('sessionToken' in this.credentials) this.credentials.sessionToken = ''
   }
   private validateSession(value: string): void {
     if (!value || value.length > 32768 || DotCharacterPolicy.hasForbiddenAscii(value) || value.includes(';') || value.includes(',')) throw fail('auth-required')
   }
-  private async request<T>(path: string, schema: z.ZodType<T>, signal: AbortSignal, body?: DotSendBody): Promise<T> {
+  private async request<T>(
+    path: string,
+    schema: z.ZodType<T>,
+    signal: AbortSignal,
+    body?: DotSendBody,
+    accessToken = this.credentials.accessToken,
+  ): Promise<T> {
     this.assertActive(signal)
     const target = `https://chatgpt.com${path}`
     if (!permittedPath.test(path) || new URL(target).href !== target) throw fail('protocol-error')
@@ -63,12 +121,14 @@ export class DotHttp {
     if (boundedSignal.aborted) throw fail('unavailable')
     try {
       const headers = new Headers({
-        Authorization: `Bearer ${this.credentials.accessToken}`,
+        Authorization: `Bearer ${accessToken}`,
         'Content-Type': 'application/json',
         'User-Agent': 'DSHDotAdapter/0.1',
       })
-      if (renewal) headers.set('Cookie', `__Secure-next-auth.session-token=${this.credentials.sessionToken}`)
-      else {
+      if (renewal) {
+        if (!('sessionToken' in this.credentials)) throw fail('auth-required')
+        headers.set('Cookie', `__Secure-next-auth.session-token=${this.credentials.sessionToken}`)
+      } else {
         headers.set('ChatGPT-Account-Id', this.identity.account)
         headers.set('X-OpenAI-Expected-Account-Id', this.identity.account)
       }
@@ -82,7 +142,12 @@ export class DotHttp {
       if (body !== undefined) request.body = JSON.stringify(body)
       this.assertActive(signal)
       const response = await this.fetcher(target, request)
-      this.assertActive(signal)
+      try {
+        this.assertActive(boundedSignal)
+      } catch (error) {
+        await response.body?.cancel()
+        throw error
+      }
       if (response.redirected || (response.status >= 300 && response.status < 400)) {
         await response.body?.cancel()
         throw fail(sending ? 'delivery-unknown' : 'access-denied')
@@ -102,6 +167,10 @@ export class DotHttp {
       }
       if (!response.body) throw fail('protocol-error')
       const reader = response.body.getReader()
+      const cancel = (): void => {
+        void reader.cancel().catch(() => undefined)
+      }
+      boundedSignal.addEventListener('abort', cancel, { once: true })
       let length = 0
       const chunks: Uint8Array[] = []
       try {
@@ -119,6 +188,7 @@ export class DotHttp {
           chunks.push(result.value)
         }
       } finally {
+        boundedSignal.removeEventListener('abort', cancel)
         reader.releaseLock()
       }
       try {
@@ -141,6 +211,7 @@ export class DotHttp {
   }
   private async refresh(signal: AbortSignal): Promise<void> {
     this.assertActive(signal)
+    if (!('sessionToken' in this.credentials)) throw fail('auth-required')
     if (!this.refreshing) {
       this.refreshing = (async () => {
         const renewed = await this.request('/api/auth/session', renewalSchema, signal)
@@ -174,6 +245,28 @@ export class DotHttp {
   }
   async api<T>(path: string, schema: z.ZodType<T>, signal: AbortSignal, body?: DotSendBody): Promise<T> {
     this.assertActive(signal)
+    if ('accountAccess' in this.credentials) {
+      const source = this.credentials
+      try {
+        return await withAccessDeadline(AbortSignal.any([signal, this.lifetime.signal]), async bounded => {
+          const access = await readAccountToken(source.accountAccess, source.accountId, bounded)
+          this.assertActive(bounded)
+          const identity = decodeIdentity(access)
+          if (identity.expires <= this.now()) throw fail('auth-required')
+          if (identity.account !== this.identity.account || identity.user !== this.identity.user || identity.accountUser !== this.identity.accountUser)
+            throw new BotAdapterError('identity-mismatch', 'The selected OpenAI account identity changed. Reconnect the original account.')
+          return this.request(`/backend-api${path}`, schema, bounded, body, access)
+        })
+      } catch (error) {
+        if (error instanceof BotAdapterError) {
+          if (error.code === 'auth-required' || error.code === 'access-denied' || error.code === 'identity-mismatch') this.failed = true
+          if (error.code === 'auth-required') throw accountFailure()
+          throw error
+        }
+        this.failed = true
+        throw accountFailure()
+      }
+    }
     if (this.expires < this.now() + 300000) await this.refresh(signal)
     const access = this.credentials.accessToken
     try {

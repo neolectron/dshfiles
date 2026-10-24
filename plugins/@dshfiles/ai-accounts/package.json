@@ -5,6 +5,7 @@
   "description": "Per-account Codex, Claude, OpenCode Go and Command Code provider instances, plus Cursor quota, for DeepSeek Harness, in the spirit of T3 Code.",
   "files": [
     "dist",
+    "src",
     "cordis.patch.yml",
     "locale",
     "NOTICE"
@@ -16,6 +17,10 @@
     "./package.json": "./package.json",
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./client": "./dist/client.js",
+    "./openai-account-access": {
+      "types": "./src/openai-account-access.ts",
+      "default": "./dist/openai-account-access.js"
+    },
     "./model-fallback-api": {
       "types": "./src/model-fallback-api.ts",
       "default": "./dist/model-fallback-api.js"
@@ -50,6 +55,7 @@
   "dependencies": {
     "@deepseek-ai/schemastery": "catalog:",
     "@dshfiles/credential-port": "workspace:*",
+    "@dshfiles/dshx": "workspace:*",
     "@dshfiles/plugin-ui": "workspace:*",
     "@dshfiles/project-folder-picker": "workspace:*",
     "@dshfiles/shared-runtime": "workspace:*",
@@ -89,7 +95,6 @@
     "@deepseek-ai/dsh-tools": "catalog:",
     "@deepseek-ai/dsh-workspace": "catalog:",
     "@dshfiles/chat": "workspace:*",
-    "@dshfiles/dshx": "workspace:*",
     "@dshfiles/request-messages": "workspace:*",
     "@types/node": "22.20.5",
     "@types/react": "catalog:",

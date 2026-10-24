@@ -6,6 +6,7 @@ export default defineConfig({
   profile: 'vanilla',
   host: { entry: 'src/host.ts' },
   modules: {
+    'openai-account-access': 'src/openai-account-access.ts',
     'model-fallback-api': 'src/model-fallback-api.ts',
     'model-fast-mode-api': 'src/model-fast-mode-api.ts',
   },

@@ -956,6 +956,9 @@ importers:
       '@dshfiles/credential-port':
         specifier: workspace:*
         version: link:../credential-port
+      '@dshfiles/dshx':
+        specifier: workspace:*
+        version: link:../../../tooling/dshx/packages/dshx
       '@dshfiles/plugin-ui':
         specifier: workspace:*
         version: link:../plugin-ui
@@ -1068,9 +1071,6 @@ importers:
       '@dshfiles/chat':
         specifier: workspace:*
         version: link:../chat
-      '@dshfiles/dshx':
-        specifier: workspace:*
-        version: link:../../../tooling/dshx/packages/dshx
       '@dshfiles/request-messages':
         specifier: workspace:*
         version: link:../request-messages
@@ -1451,6 +1451,9 @@ importers:
       '@deepseek-ai/dsh-tools':
         specifier: 'catalog:'
         version: 0.2.1-rc.2(0ab00a8eb09daf0ab308290e757fa426)
+      '@dshfiles/ai-accounts':
+        specifier: workspace:*
+        version: link:../ai-accounts
       '@dshfiles/secret-catalog':
         specifier: workspace:*
         version: link:../secret-catalog

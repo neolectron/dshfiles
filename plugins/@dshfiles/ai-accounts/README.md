@@ -8,6 +8,14 @@ picker. GitHub Copilot connects through GitHub's device-code OAuth flow. Cursor
 accounts only track identity and quota: DSH has no Cursor agent runtime, so
 Cursor sessions run outside DSH.
 
+## Host-only selected-account use
+
+`@dshfiles/ai-accounts/openai-account-access` is a declared dshx module for trusted backend composition, not an API/Client/tool credential getter. `OpenAIAccountAccess.create` requires one explicit account ID, purpose `openai-dot` and an explicit risk opt-in. Its `withAccessToken` callback uses only that enabled Codex account's already-existing private login; it never acquires from the pool, materializes a shadow, refreshes, rewrites, signs in or substitutes another account. The credential owner remains responsible for login/rotation.
+
+Use is bounded, cancelable, rechecks metadata and layout around credential access/results, and pins identity hints. Private reads refuse aliases/unsafe file permissions and malformed or oversized input. All private state uses runtime-private fields; errors are rebuilt with fixed messages and no foreign causes. The callback and its result remain Host-private: callers must never serialize credentials into public responses. Closing cannot recall a bearer already delivered or undo an accepted remote request. Decoding a JWT is not signature validation or proof of provider permission.
+
+This module is an integration foundation, not an enabled Dot login flow. A separately authorized selected-account feasibility request returned403 HTML; no retries, cookies or workaround followed. GUI wiring, private cross-backend authorization and actual provider compatibility still need verification. The existing model login and refresh paths are not replaced.
+
 ## Providers
 
 | Kind           | Login                                                                                                                                                    | Model route | Quota                                                                                                                       |

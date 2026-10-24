@@ -6,17 +6,25 @@ Registers a v1 `BotAdapter` with `ctx.get('botAdapters')`; the provider-neutral 
 
 ## Node composition
 
-`@dshfiles/bot-openai-dot/adapter` is an intentional dshx public module exposing the existing `createDotAdapter` factory and its dependency type. It can be constructed, configured and registered with the public Bots registry in ordinary Node without starting a DSH Host or reading credentials. The caller supplies the canonical reference resolver and optionally a writable credential store; the protocol, identity and safety rules stay in this provider.
+`@dshfiles/bot-openai-dot/adapter` is an intentional dshx public module exposing the existing `createDotAdapter` factory and its dependency type. It can be constructed, configured and registered with the public Bots registry in ordinary Node without starting a DSH Host or reading credentials. The caller supplies either the legacy reference resolver (and optional writable credential store) or a backend-only `DotAccountAccess` callback for an externally owned OpenAI login. These authorities cannot be combined; the protocol, identity and safety rules stay in this provider.
 
-Without a store, both the management metadata and session reference-binding method are absent. Core refuses management grants without restarting or poisoning a healthy manual worker. Memory-only renewal remains available; nothing writes a caller's reference backend. With a store, the original explicit-consent and identity-bound write semantics remain unchanged.
+Without a store, both the management metadata and session reference-binding method are absent. Core refuses management grants without restarting or poisoning a healthy manual worker. Memory-only renewal remains available in legacy reference mode; external-account mode never uses cookie renewal. Nothing writes a caller's reference backend. With a store, the original explicit-consent and identity-bound write semantics remain unchanged.
 
 Secret Catalog is a **Host-entry-only optional peer** (and build/test dependency), not a dependency of the pure adapter. A DSH profile loading this package's root Host entry must still provide the Catalog package/API; standalone adapter consumers do not need that plugin graph. The adapter declares its direct dshx API runtime dependency. AGPL/source/provenance obligations apply to applications composing it, not just to its default Host entry.
 
 ## Credentials and linking
 
-Configuration has exactly two required reference fields: `accessTokenRef` and `sessionTokenRef`, each `secret:ALIAS` or `secret:ALIAS@env`. No raw tokens, browser/cookie extraction or implicit process-environment fallback. Existing credentials must already be stored by the user through their supported vault workflow. The canonical credential-port Host resolver reads the values; clients, tools and local history receive references only.
+Legacy reference-mode configuration has exactly two required reference fields: `accessTokenRef` and `sessionTokenRef`, each `secret:ALIAS` or `secret:ALIAS@env`. No raw tokens, browser/cookie extraction or implicit process-environment fallback. Existing credentials must already be stored by the user through their supported vault workflow. The canonical credential-port Host resolver reads the values; clients, tools and local history receive references only.
 
 Credentials are broad ChatGPT account authority, **not** provider-enforced Dot-only scope. This unsupported protocol can break or be denied at any time. Access JWT decoding is a binding hint, **not signature validation or authorization**. Successful provider discovery plus exact two-member room verification authorizes the Dot messaging room.
+
+### Externally owned OpenAI account
+
+`createDotAdapter({ accountAccess: { readAccessToken(accountId, signal) } })` accepts exactly `{ accountId }` connection configuration. The bounded account ID is a plaintext reference, not a token or credential path. The backend account owner must authorize that exact account and return its current access token only inside the backend callback. No token enters a Client/API/tool result, connection configuration or Bots history. A static resolver/store cannot be supplied alongside this mode; no management metadata or reference-binding method is offered.
+
+Initial access and every provider HTTP operation re-read the selected account through that capability. JWT expiry must be known and unexpired; account, user and account-user binding hints must remain unchanged. These checks are not signature verification or proof of Dot entitlement. Missing, expired, switched or denied credentials fail closed without another account, cookie, refresh token, credential write or `/api/auth/session` request. A 401/403 stops the session until explicit reconnect. No auth retry repeats a POST; uncertain delivery still requires reconciliation of the original request UUID.
+
+Owner resolution and each HTTP operation have a 15-second cancellation boundary, including callbacks or fetch implementations that ignore cancellation. Close/cancel prevents late credentials from authorizing provider I/O and cancels response reads. This mode is an injection seam, not an implemented account-owner broker or proof that Codex OAuth can access Dot. It does not modify the pinned private provider protocol.
 
 ### Web-only sign-in work is not activated
 

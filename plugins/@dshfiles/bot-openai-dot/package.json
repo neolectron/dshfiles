@@ -52,6 +52,7 @@
     "@deepseek-ai/dsh-launch-environment": "catalog:",
     "@deepseek-ai/dsh-subprocess": "catalog:",
     "@deepseek-ai/dsh-tools": "catalog:",
+    "@dshfiles/ai-accounts": "workspace:*",
     "@dshfiles/secret-catalog": "workspace:*",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
