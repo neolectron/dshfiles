@@ -23,6 +23,10 @@
     ".": "./dist/index.js",
     "./package.json": "./package.json",
     "./cordis.patch.yml": "./cordis.patch.yml",
+    "./account-authority": {
+      "types": "./src/account-authority.ts",
+      "default": "./dist/account-authority.js"
+    },
     "./adapter": {
       "types": "./src/adapter.ts",
       "default": "./dist/adapter.js"
@@ -49,6 +53,7 @@
     "@deepseek-ai/dsh": "0.2.1-rc.2",
     "@deepseek-ai/dsh-client-connection": "catalog:",
     "@deepseek-ai/dsh-credentials-local": "catalog:",
+    "@deepseek-ai/dsh-host-webserver": "catalog:",
     "@deepseek-ai/dsh-launch-environment": "catalog:",
     "@deepseek-ai/dsh-subprocess": "catalog:",
     "@deepseek-ai/dsh-tools": "catalog:",
@@ -65,10 +70,18 @@
   "peerDependencies": {
     "@deepseek-ai/cordis": "~4.0.4",
     "@deepseek-ai/dsh": ">=0.2.1-rc.2 <0.3.0-0",
+    "@deepseek-ai/dsh-host-webserver": ">=0.2.1-rc.2 <0.3.0-0",
     "@deepseek-ai/dsh-tools": ">=0.2.1-rc.2 <0.3.0-0",
+    "@dshfiles/ai-accounts": ">=0.1.0 <0.2.0",
     "@dshfiles/secret-catalog": ">=0.1.0 <0.2.0"
   },
   "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-host-webserver": {
+      "optional": true
+    },
+    "@dshfiles/ai-accounts": {
+      "optional": true
+    },
     "@dshfiles/secret-catalog": {
       "optional": true
     }

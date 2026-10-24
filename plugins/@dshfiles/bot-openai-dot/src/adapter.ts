@@ -7,10 +7,11 @@ import { BotAdapterError, type AdapterMessage, type BotAdapter, type BotAdapterS
 import { formatSecretReference, secretReferenceSchema } from '@dshfiles/credential-port'
 import { DotHttp, segment, type HttpFetch } from './http.js'
 import { DotCredentials, type DotCredentialStore } from './credentials.js'
+import { accountConfigSchema } from './account-config.js'
 import { baselinePageSchema, messageSchema, pageSchema, primarySchema, profileSchema, roomSchema, verifyRoom, type Message } from './protocol.js'
 
 const configSchema = z.object({ accessTokenRef: secretReferenceSchema, sessionTokenRef: secretReferenceSchema }).strict()
-const accountConfigSchema = z.object({ accountId: z.string().trim().min(1).max(64) }).strict()
+
 const requestIdSchema = z.string().uuid()
 const pollCursorSchema = z
   .object({
@@ -307,7 +308,7 @@ export function createDotAdapter(dependencies: DotDependencies): BotAdapter {
       },
     ]
     adapter.info.risk =
-      'This unsupported private ChatGPT protocol may stop working or be denied. The selected OpenAI login grants broad account authority, not a Dot-only scope. Its owner supplies short-lived access only in backend memory. No cookie, session renewal, credential copy or cross-account fallback is performed. Expiry, account changes or denial stop the connection; the account owner must recover it explicitly. Only messages since linking are synchronized. Approvals and media require native ChatGPT. All admitted DSH browsers share the owner account authority.'
+      'This unsupported private ChatGPT protocol may stop working or be denied. The selected OpenAI login grants broad account authority, not a Dot-only scope. Its owner supplies short-lived access only in backend memory. No cookie, session renewal, persistent credential or refresh-token copy, or cross-account fallback is performed. Expiry, account changes or denial stop the connection; the account owner must recover it explicitly. Only messages since linking are synchronized. Approvals and media require native ChatGPT. All admitted DSH browsers share the owner account authority.'
   } else if (dependencies.store !== undefined) {
     adapter.info.credentialManagement = {
       label: 'Keep Dot credentials renewed in the vault',

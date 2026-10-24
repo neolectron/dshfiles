@@ -10,7 +10,7 @@ Registers a v1 `BotAdapter` with `ctx.get('botAdapters')`; the provider-neutral 
 
 Without a store, both the management metadata and session reference-binding method are absent. Core refuses management grants without restarting or poisoning a healthy manual worker. Memory-only renewal remains available in legacy reference mode; external-account mode never uses cookie renewal. Nothing writes a caller's reference backend. With a store, the original explicit-consent and identity-bound write semantics remain unchanged.
 
-Secret Catalog is a **Host-entry-only optional peer** (and build/test dependency), not a dependency of the pure adapter. A DSH profile loading this package's root Host entry must still provide the Catalog package/API; standalone adapter consumers do not need that plugin graph. The adapter declares its direct dshx API runtime dependency. AGPL/source/provenance obligations apply to applications composing it, not just to its default Host entry.
+Secret Catalog is a **Host-entry-only optional peer** (and build/test dependency), not a dependency of the pure adapter. The default reference-mode Host entry requires that Catalog package/API. Explicit account mode instead dynamically consumes the public AI Accounts capability and native WebServer (optional Host peers); standalone adapter/authority-client consumers need neither Host graph. The adapter declares its direct dshx API runtime dependency. AGPL/source/provenance obligations apply to applications composing it, not just to its default Host entry.
 
 ## Credentials and linking
 
@@ -24,7 +24,28 @@ Credentials are broad ChatGPT account authority, **not** provider-enforced Dot-o
 
 Initial access and every provider HTTP operation re-read the selected account through that capability. JWT expiry must be known and unexpired; account, user and account-user binding hints must remain unchanged. These checks are not signature verification or proof of Dot entitlement. Missing, expired, switched or denied credentials fail closed without another account, cookie, refresh token, credential write or `/api/auth/session` request. A 401/403 stops the session until explicit reconnect. No auth retry repeats a POST; uncertain delivery still requires reconciliation of the original request UUID.
 
-Owner resolution and each HTTP operation have a 15-second cancellation boundary, including callbacks or fetch implementations that ignore cancellation. Close/cancel prevents late credentials from authorizing provider I/O and cancels response reads. This mode is an injection seam, not an implemented account-owner broker or proof that Codex OAuth can access Dot. It does not modify the pinned private provider protocol.
+Owner resolution and each HTTP operation have a 15-second cancellation boundary, including callbacks or fetch implementations that ignore cancellation. Close/cancel prevents late credentials from authorizing provider I/O and cancels response reads. The public AI Accounts owner broker and private authority channel now compose this seam, but synthetic success is not proof that Codex OAuth can access Dot. It does not modify the pinned private provider protocol.
+
+### Private DSH → Node account authority
+
+The declared `@dshfiles/bot-openai-dot/account-authority` module supplies a backend-only handler/client and one versioned private contract. It is **not** a native API, Client or agent get-token method. The normal Node app can use the client without importing AI Accounts or mounting a DSH home. Only short-lived access crosses this authenticated backend channel in memory; no cookie, refresh token, persistent credential copy or value in normal Bot configuration/history.
+
+The Host remains in legacy `mode: references` when configuration is omitted. Profile-owned account mode requires every admission explicitly:
+
+```yaml
+mode: account
+accountIds: [your_existing_dsh_account_id]
+acceptAccountRisks: true
+authorityOrigin: https://your-native-dsh-host.example
+# Separate purpose key, NOT the Bots control key, OpenAI login or DSH browser cookie.
+authorityTokenReference: secret:DOT_ACCOUNT_AUTHORITY
+```
+
+The key resolves fresh through the canonical Host reference port. An empty reference alone permits explicit `DSH_DOT_ACCOUNT_AUTHORITY_TOKEN` fallback. No unlisted account or pool fallback is allowed. Host setup registers one owned exact route through the installed public WebServer API, with no new listener or bot engine; unloading removes the route, registration and broker capabilities. Native listener protocol must match the pinned origin. Malformed/mixed/implicit admission is refused.
+
+The handler owns its independent purpose authentication, exact Host/path/method, no browser Origin/Cookie/Referer/fetch-site/CORS, no forwarded-header trust, 8 active request races, 2KiB input and10s deadline. Node's legitimate `sec-fetch-mode` alone is not browser admission. All handler failures are sanitized before native logging. A canceled request cannot use a late credential; this does not kill arbitrary underlying noncooperative I/O or recall an access token already delivered. The client uses a fixed HTTPS root or literal-loopback HTTP origin, no redirects/retries, fresh keys, 64KiB bounded strict UTF-8 output, exact account binding and15s cancel/close deadline. This purpose key must differ from the normal service control key; the app checks startup and rotation.
+
+**Deployment is not yet proved:** HTTPS must reach actual native TLS; HTTP requires both actual socket endpoints to be loopback. A LAN HTTP GUI URL, proxy/forwarded headers or a container's unrelated loopback do not satisfy this fence. Do not transfer a real account token until the secure topology is verified. Prior selected-login discovery returned403 HTML and was not retried. Real account authorization and GUI activation remain unverified; synthetic public broker → real private loopback HTTP → client → Dot factory tests do not establish provider entitlement.
 
 ### Web-only sign-in work is not activated
 

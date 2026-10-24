@@ -1,10 +1,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import { createServer } from 'node:http'
 import { userInfo } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { z } from 'zod'
+import {
+  createDotAccountAuthorityClient,
+  createDotAccountAuthorityHandler,
+  type DotAccountAuthorityClient,
+  type DotAccountAuthorityHandler,
+} from '@dshfiles/bot-openai-dot/account-authority'
 import { OpenAIAccountAccess, type OpenAIAccountAccessOptions } from '@dshfiles/ai-accounts/openai-account-access'
 import { createDotAdapter as createPublicDotAdapter } from '@dshfiles/bot-openai-dot/adapter'
-import { BotAdapterError, type BotAdapterErrorCode, type BotSendInput } from '@dshfiles/bots/adapter'
+import { BotAdapterError, type BotAdapterErrorCode, type BotAdapterSession, type BotSendInput } from '@dshfiles/bots/adapter'
 import { createDotAdapter, type DotAccountAccess } from '../src/adapter.js'
 import { DotHttp, type HttpFetch } from '../src/http.js'
 import { primarySchema } from '../src/protocol.js'
@@ -121,7 +129,7 @@ async function refused<Result>(operation: Promise<Result>, code: BotAdapterError
 }
 
 describe('Dot externally owned account access', () => {
-  it('composes the public owner broker and Dot factory without default I/O, cookies or management', async () => {
+  it('composes public owner, private HTTP transport and Dot factory without default credential I/O, cookies or management', async () => {
     type OwnerSource = NonNullable<OpenAIAccountAccessOptions['source']>
     type OwnerAccounts = Awaited<ReturnType<OwnerSource['readAccounts']>>
     const root = join(userInfo().homedir, '.synthetic-public-dot-owner')
@@ -163,20 +171,46 @@ describe('Dot externally owned account access', () => {
     const broker = OpenAIAccountAccess.create({ accountId: selected.instanceId, purpose: 'openai-dot', acceptRisks: true, source, now: () => now })
     const h = fixture()
     const requestedIds: string[] = []
-    const adapter = createPublicDotAdapter({
-      accountAccess: {
-        readAccessToken: async (accountId, signal) => {
-          expect(accountId).toBe(broker.accountId)
-          requestedIds.push(accountId)
-          return broker.withAccessToken(signal, async access => access)
-        },
-      },
-      fetch: h.fetch,
-      now: () => now,
+    const purposeKey = 'SYNTHETIC_PRIVATE_AUTHORITY_KEY_NOT_BOTS_CONTROL'
+    let authority: DotAccountAuthorityHandler | undefined
+    let transport: DotAccountAuthorityClient | undefined
+    let session: BotAdapterSession | undefined
+    let authorityRequests = 0
+    const server = createServer((request, response) => {
+      authorityRequests++
+      if (authority === undefined) {
+        response.writeHead(503)
+        response.end()
+        return
+      }
+      void authority.handler(request, response)
     })
-    const open = () => adapter.open({ config: { accountId: broker.accountId }, signal: new AbortController().signal })
-    let session: Awaited<ReturnType<typeof adapter.open>> | undefined
     try {
+      await new Promise<void>((resolve, reject) => {
+        server.once('error', reject)
+        server.listen(0, '127.0.0.1', () => {
+          server.off('error', reject)
+          resolve()
+        })
+      })
+      const bound = z.object({ port: z.number().int().min(1).max(65535) }).parse(server.address())
+      const origin = `http://127.0.0.1:${bound.port}`
+      authority = createDotAccountAuthorityHandler({
+        expectedOrigin: origin,
+        accountIds: [broker.accountId],
+        acceptRisks: true,
+        resolveBearerToken: async () => purposeKey,
+        accountAccess: {
+          readAccessToken: async (accountId, signal) => {
+            expect(accountId).toBe(broker.accountId)
+            requestedIds.push(accountId)
+            return broker.withAccessToken(signal, async access => access)
+          },
+        },
+      })
+      transport = createDotAccountAuthorityClient({ origin, resolveBearerToken: async () => purposeKey })
+      const adapter = createPublicDotAdapter({ accountAccess: transport, fetch: h.fetch, now: () => now })
+      const open = () => adapter.open({ config: { accountId: broker.accountId }, signal: new AbortController().signal })
       expect(ownerReads).toBe(0)
       expect(adapter.info).not.toHaveProperty('credentialManagement')
       session = await open()
@@ -189,6 +223,10 @@ describe('Dot externally owned account access', () => {
       expect(requestedIds.every(accountId => accountId === selected.instanceId)).toBe(true)
       expect(h.calls.every(call => !new Headers(call.init.headers).has('cookie'))).toBe(true)
       expect(h.calls.filter(call => call.init.method === 'POST')).toHaveLength(1)
+      expect(authorityRequests).toBe(requestedIds.length)
+      const beforeUnadmitted = { ownerReads, metadataReads, brokerRequests: requestedIds.length, providerRequests: h.calls.length }
+      await refused(transport.readAccessToken('unadmitted-account', new AbortController().signal), 'auth-required')
+      expect({ ownerReads, metadataReads, brokerRequests: requestedIds.length, providerRequests: h.calls.length }).toEqual(beforeUnadmitted)
       const before = h.calls.length
       ownedToken = token({ exp: now / 1000 + 30 }) // Owner's 60-second safety margin refuses before provider I/O.
       await refused(session.poll({ remoteBotId: 'dot', conversationId: 'room', cursor: 'baseline', signal: new AbortController().signal }), 'auth-required')
@@ -204,9 +242,20 @@ describe('Dot externally owned account access', () => {
       await refused(open(), 'auth-required')
       expect({ ownerReads, metadataReads }).toEqual(readsBeforeClose)
       expect(h.calls).toHaveLength(before)
+      transport.close()
+      const beforeClientClose = { authorityRequests, ownerReads, metadataReads }
+      await refused(transport.readAccessToken(broker.accountId, new AbortController().signal), 'unavailable')
+      expect({ authorityRequests, ownerReads, metadataReads }).toEqual(beforeClientClose)
     } finally {
       await session?.close()
+      transport?.close()
+      authority?.close()
       broker.close()
+      server.closeAllConnections()
+      if (server.listening)
+        await new Promise<void>((resolve, reject) =>
+          server.close(error => (error ? reject(new Error('Synthetic authority listener cleanup failed')) : resolve())),
+        )
     }
   })
 

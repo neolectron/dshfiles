@@ -2,6 +2,11 @@ id: no-export-from
 language: TypeScript
 message: Implementation modules must not forward exports; configure explicit public boundary files as the only exceptions.
 severity: error
+# Exact owned public boundary: declared dshx module + matching built package subpath,
+# tested through ordinary Node imports. Implementation files remain subject to this rule.
+# Preserve this local delta when refreshing the vendored rule; no wildcard exemption.
+ignores:
+  - plugins/@dshfiles/bot-openai-dot/src/account-authority.ts
 rule:
   kind: export_statement
   has:
