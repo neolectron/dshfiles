@@ -31,6 +31,10 @@
     "./server": {
       "types": "./src/server.ts",
       "default": "./dist/server.js"
+    },
+    "./node": {
+      "types": "./src/node.ts",
+      "default": "./dist/node.js"
     }
   },
   "scripts": {
@@ -79,7 +83,9 @@
     "@deepseek-ai/dsh-client-ui-renderer": ">=0.2.1-rc.2 <0.3.0-0",
     "@deepseek-ai/dsh-client-ui-sidebar": ">=0.2.1-rc.2 <0.3.0-0",
     "@deepseek-ai/dsh-client-ui-slots": ">=0.2.1-rc.2 <0.3.0-0",
+    "@deepseek-ai/dsh-storage": ">=0.2.1-rc.2 <0.3.0-0",
     "@deepseek-ai/dsh-storage-domain": ">=0.2.1-rc.2 <0.3.0-0",
+    "@deepseek-ai/dsh-storage-json": ">=0.2.1-rc.2 <0.3.0-0",
     "@deepseek-ai/dsh-tools": ">=0.2.1-rc.2 <0.3.0-0"
   },
   "dsh": {

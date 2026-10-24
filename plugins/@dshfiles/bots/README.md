@@ -14,7 +14,7 @@ The `@dshfiles/bots/server` entry is an embeddable Node HTTP boundary over the s
 
 The API uses authenticated `GET /v1/snapshot` and JSON `POST /v1/<method>` routes matching the existing Bots contract, with a 64 KiB body cap and a 10-second incomplete-body deadline. `GET /healthz` contains no bot identity or transcript. All requests with an Origin header are rejected in this initial server-to-server boundary; it is not permissive browser CORS. The service token grants owner-level access and must stay in the trusted backend, never a browser URL or public frontend. A DSH Host client and legitimate provider authentication still need integration. Never copy the user's browser session or operate standalone and DSH workers over the same storage concurrently. If a request loses its response, delivery can remain unknown: retry only the same original UUID, never automatically invent another send.
 
-This is **not yet a finished standalone or Docker service**: durable Node composition/runner, deployment packaging, the DSH client transport and real provider login remain unfinished. The real Yield UI test is separate evidence, not a backend test.
+The public `@dshfiles/bots/node` entry adds private JSON storage ownership and shutdown around this boundary. The [normal Node app](../../../apps/bots-service/README.md) has a CLI and a verified network-disabled container smoke; its runner reports no configured adapters by default. The DSH client transport, provider login/composition and final deployment remain unfinished. The real Yield UI test is separate evidence, not a backend test.
 
 ## Use
 

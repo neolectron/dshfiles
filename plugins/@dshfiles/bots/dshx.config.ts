@@ -9,6 +9,6 @@ export default defineConfig({
     shared: '@dshfiles/shared-runtime',
     vite: { plugins: [pluginUiVite()] },
   },
-  modules: { adapter: 'src/adapter.ts', api: 'src/api.ts', server: 'src/server.ts' },
+  modules: { adapter: 'src/adapter.ts', api: 'src/api.ts', server: 'src/server.ts', node: 'src/node.ts' },
   build: { sourcemap: true, declarations: true, minify: true },
 })

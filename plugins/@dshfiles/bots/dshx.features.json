@@ -222,6 +222,24 @@
           "id": "bots.http-body-deadline",
           "file": "plugins/@dshfiles/bots/src/server.test.ts",
           "testName": "bounds an unfinished real HTTP request body without admitting a provider operation"
+        },
+        {
+          "kind": "unit-test",
+          "id": "bots.node-durable-ownership",
+          "file": "plugins/@dshfiles/bots/src/node-runtime.test.ts",
+          "testName": "creates a private dedicated root and persists real JSON plus request tombstones through close/reopen"
+        },
+        {
+          "kind": "unit-test",
+          "id": "bots.node-exclusive-owner",
+          "file": "plugins/@dshfiles/bots/src/node-runtime.test.ts",
+          "testName": "admits only one simultaneous owner and never reclaims an existing lease"
+        },
+        {
+          "kind": "unit-test",
+          "id": "bots.node-malformed-state",
+          "file": "plugins/@dshfiles/bots/src/node-runtime.test.ts",
+          "testName": "refuses malformed canonical JSON without overwriting it or leaking its content"
         }
       ]
     }

@@ -4,6 +4,7 @@ import { JsonText, PluginApiError, type ApiMethodDefinition } from '@dshfiles/ds
 import { z } from 'zod'
 import { botsApi } from './api.js'
 import { BotsEngine, type BotsEngineOptions } from './engine.js'
+import { validateBotsServerConfiguration } from './server-config.js'
 
 const rawJsonSchema = z.json()
 type RawJson = z.infer<typeof rawJsonSchema>
@@ -72,11 +73,7 @@ export interface BotsServerOptions {
   readonly port?: number
 }
 export async function startBotsServer(options: BotsServerOptions): Promise<{ readonly origin: string; readonly close: () => Promise<void> }> {
-  // This is a service credential, never a provider credential or a URL parameter.
-  if (!/^[\x21-\x7e]{32,512}$/.test(options.bearerToken)) throw new Error('Bots requires a 32–512 character printable ASCII service token.')
-  const host = options.host ?? '127.0.0.1'
-  const port = options.port ?? 0
-  if ((host !== '127.0.0.1' && host !== '0.0.0.0') || !Number.isInteger(port) || port < 0 || port > 65535) throw new Error('Invalid Bots listen configuration.')
+  const { host, port } = validateBotsServerConfiguration(options)
   const expected = createHash('sha256').update(`Bearer ${options.bearerToken}`).digest()
   const engine = new BotsEngine({ store: options.store, registry: options.registry })
   let closing = false
