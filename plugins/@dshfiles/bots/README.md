@@ -8,6 +8,14 @@ A first-class workspace for **existing, long-lived remote bots**. Open **Bots** 
 
 **Build with dshx:** supported `sidebar.panellist` and `main` slots give remote identities their own home, without changing native Agents or thread semantics. The shared Host API owns connections, cached conversations and durable send requests; adapters own provider protocols. The generic client contains no provider-specific fields or account assumptions.
 
+## Node HTTP service boundary
+
+The `@dshfiles/bots/server` entry is an embeddable Node HTTP boundary over the same private `BotsEngine`, not a proxy to the running DSH and not another outbox. Its deployment supplies a `BotsStore`, an adapter registry and a separate service bearer token. Default binding is loopback on an ephemeral port; an operator may explicitly choose a container bind. It does not supply TLS: keep plain HTTP on loopback/private container transport, or terminate TLS at a trusted reverse proxy before wider exposure. The server owns and closes its engine, but the composition root owns persistence and registry registrations.
+
+The API uses authenticated `GET /v1/snapshot` and JSON `POST /v1/<method>` routes matching the existing Bots contract, with a 64 KiB body cap and a 10-second incomplete-body deadline. `GET /healthz` contains no bot identity or transcript. All requests with an Origin header are rejected in this initial server-to-server boundary; it is not permissive browser CORS. The service token grants owner-level access and must stay in the trusted backend, never a browser URL or public frontend. A DSH Host client and legitimate provider authentication still need integration. Never copy the user's browser session or operate standalone and DSH workers over the same storage concurrently. If a request loses its response, delivery can remain unknown: retry only the same original UUID, never automatically invent another send.
+
+This is **not yet a finished standalone or Docker service**: durable Node composition/runner, deployment packaging, the DSH client transport and real provider login remain unfinished. The real Yield UI test is separate evidence, not a backend test.
+
 ## Use
 
 1. Install and enable a compatible bot adapter. Without one, the roster is honestly empty and **Connect bot** explains that adapters are unavailable.

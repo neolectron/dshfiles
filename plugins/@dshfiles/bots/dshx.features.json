@@ -189,6 +189,41 @@
           "testName": "leaves the optional additional vault grant unchecked and submits manual mode by default"
         }
       ]
+    },
+    {
+      "id": "node-http-boundary",
+      "title": "An embeddable Node HTTP boundary over one Bots engine",
+      "summary": "Run one provider-neutral Bots engine behind authenticated server-to-server HTTP using an injected exclusive store and adapter registry. This is not a proxy to DSH, finished Docker packaging or real provider authentication.",
+      "surfaces": ["host", "storage", "integration"],
+      "configuration": [],
+      "states": ["unauthorized", "listening", "connected", "delivery-uncertain", "closed"],
+      "failureModes": [
+        "Missing or invalid bearer authentication is rejected before a route performs a domain operation; browser Origin headers and query credentials are rejected.",
+        "Malformed, oversized, encoded or unfinished request bodies fail within fixed transport bounds without reflecting input or provider diagnostics.",
+        "A retry keeps the original request UUID. A changed body is refused and uncertain delivery is never automatically resent.",
+        "The caller owns durable storage and adapter registration; do not run this engine concurrently with a DSH engine over the same data."
+      ],
+      "externalDependencies": [],
+      "verification": [
+        {
+          "kind": "unit-test",
+          "id": "bots.http-authentication",
+          "file": "plugins/@dshfiles/bots/src/server.test.ts",
+          "testName": "owns a real listener, authenticates before operations and exposes liveness only"
+        },
+        {
+          "kind": "unit-test",
+          "id": "bots.http-durable-retry",
+          "file": "plugins/@dshfiles/bots/src/server.test.ts",
+          "testName": "connects, polls, sends once across retry/reopen and preserves the canonical consent rules"
+        },
+        {
+          "kind": "unit-test",
+          "id": "bots.http-body-deadline",
+          "file": "plugins/@dshfiles/bots/src/server.test.ts",
+          "testName": "bounds an unfinished real HTTP request body without admitting a provider operation"
+        }
+      ]
     }
   ]
 }

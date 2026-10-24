@@ -27,6 +27,10 @@
     "./api": {
       "types": "./src/api.ts",
       "default": "./dist/api.js"
+    },
+    "./server": {
+      "types": "./src/server.ts",
+      "default": "./dist/server.js"
     }
   },
   "scripts": {

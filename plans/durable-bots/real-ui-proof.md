@@ -26,6 +26,12 @@ The user corrected the earlier architecture proposal: use a normal reusable **No
 
 Do not convert this manual Computer Use path into a required desktop helper. Product onboarding must remain usable from the web GUI. No automated import of the existing signed-in browser session is authorized or implemented. A legitimate supported session handoff/authentication path for the Node backend, real DSH wiring, durable delivery/reconnect and lifecycle checks still require implementation and verification. Preserve the no-live-restart rule and the existing user's configuration.
 
+## Backend authentication check
+
+A subsequent read-only compatibility probe inside the normal Dot web page called only the adapter's fixed `/backend-api/tbo/primary` GET, using normal same-origin browser credentials but **without reading or supplying an Authorization token**. It returned401; its response body was discarded without inspection. This establishes that the visible browser login alone does not authenticate that standalone adapter request. It does **not** establish that a legitimately authenticated backend request would be denied or that the whole protocol remains compatible.
+
+Passive resource timing showed messaging-room live and Dot-thread request families used by the normal page. Only redacted path shapes/counts were inspected; query strings, private IDs, headers and response bodies were omitted. Do not infer response schemas from these paths, add alternate endpoints as a bypass, or extract credentials to make this probe pass.
+
 ## Resume
 
 Do not repeat the consumed test or spend another round proving the same visible UI. Use the real `/dots/home` observation and the normal Node-service architecture correction to reassess the missing backend authentication/transport seam. The overall goal stays open; neither fixtures nor this successful manual UI exchange constitute a completed DSH integration.

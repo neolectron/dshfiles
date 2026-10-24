@@ -1,0 +1,40 @@
+# Normal Node Bots service — verified boundary and remaining composition
+
+## Architecture decision
+
+Follow the user's correction: a reusable Node.js HTTP Bots service with provider adapters, deployable in Docker. Do not make the product a Dot-specific proxy appliance or require desktop automation. One engine owns workers, durable outbox, request tombstones and cursors; the DSH UI/Host must eventually become a client to that owner rather than running another engine against the same data.
+
+## Implemented boundary
+
+The same-package public `@dshfiles/bots/server` module now starts a real Node HTTP listener owning the existing `BotsEngine`. It receives the existing store and registry ports instead of duplicating domain logic or forwarding to a live DSH API. No provider switch is added.
+
+- Loopback/ephemeral-port default; explicit container bind only. No TLS termination is implemented: use private transport or a trusted TLS reverse proxy for wider exposure.
+- A separate deployment-supplied service bearer token, at least32 printable ASCII characters, is validated before engine construction/start. It grants owner authority and is not a provider credential or frontend secret.
+- `GET /healthz` exposes liveness only. Authenticated `GET /v1/snapshot` and fixed JSON POST routes serve all nine existing Bots operations with their canonical input/output Standard Schemas.
+- Reject browser Origin headers, query/absolute URLs, encoded bodies, wrong methods/media types, invalid JSON and bodies over64 KiB. A real unfinished request receives408 after the10-second application deadline. Headers/connections and outer request lifetime are bounded.
+- Unexpected provider errors become fixed codes, not raw payloads. An admitted send can outlive a lost HTTP response; only an explicit retry of the original UUID is valid. No automatic resend or new request ID is introduced.
+- Closing revokes the server and closes the engine/listener. The composition root remains responsible for the exclusive store/domain and registry registrations.
+
+## Verified on this branch
+
+- **99/99 Bots tests**, including six new real TCP/fetch tests with synthetic adapters and temporary real JSON storage. Fixtures use only bare public Cordis Context + Storage/StorageJson/StorageDomain, not a DSH app, profile, Connection, commands or tool runtime.
+- HTTP tests cover auth before operations, connect/poll/incoming/messages/send, same-UUID retry through real JSON close/reopen with exactly one provider send, changed-body conflict, destructive/credential consent checks, uncertain delivery, redaction, malformed/oversized/chunked/slow bodies, invalid listen/token settings before state mutation, independent roots and shutdown.
+- Strict package types, modified-source lint/AST/format and diff checks pass. Existing unrelated UI ref warnings remain warnings, not server-test failures.
+- The package build emits `dist/server.js`; ordinary Node with TypeScript loading disabled imports the public subpath.
+- A separate ordinary-Node built-artifact smoke (memory fixture only) starts the real listener, verifies health200/missing-auth401/authenticated empty snapshot200, then confirms idempotent close stops the listener. No DSH process or provider is started.
+- Independently, bare ordinary Node + the installed public storage packages wrote a synthetic domain, disposed the Context, reopened it in a new Context and read the retained value; its positively identified temporary directory was removed. This validates the reusable storage assembly, not a finished production runner.
+
+## Not yet implemented or verified
+
+This is an **embeddable server boundary**, not a completed standalone/Docker deployment or real Dot backend connection.
+
+1. Production Node composition/runner with an explicit private durable root, single-process ownership, complete runtime dependency closure and shutdown/cleanup. Reuse the existing public JSON/domain backend rather than inventing another file store. Container packaging must follow the normal service architecture and never mount existing browser profiles or expose the Docker socket.
+2. Legitimate provider authentication and an intentional public adapter composition seam. The user's existing Yield is proven through normal desktop/web UI only; no session was imported into Node. The read-only token-free `/backend-api/tbo/primary` compatibility probe returned401. Do not call this proof that a properly authenticated adapter will fail, or that its protocol/schema is current.
+3. A DSH Host client transport to this service, with service credentials resolved on the Host and no second local engine. Preserve the existing UI/tools and explicit operation consent.
+4. Safe actual-installation promotion, user-controlled activation and real backend account/room/cursor/reconnect/renewal checks. No live profile was edited and no DSH restart occurred.
+
+The one real test message was already sent and replied **OK** in the normal app. Its authorization is consumed; any later backend send needs fresh permission. Do not reuse it merely to make service fixtures look live.
+
+## Resume
+
+Build the ordinary Node storage/runtime composition next, then address legitimate backend authentication and the DSH client. Keep manual UI proof, synthetic HTTP proof and real integration acceptance separate. Do not deploy the old frozen offline candidate after these source changes; generate a new one only after the chosen implementation is complete.
