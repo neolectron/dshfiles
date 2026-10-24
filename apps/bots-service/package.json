@@ -3,20 +3,26 @@
   "version": "0.1.0",
   "private": true,
   "description": "A provider-neutral Node HTTP service owning durable Bots workers and storage.",
-  "license": "MIT",
+  "license": "AGPL-3.0-only",
   "bin": {
     "bots-service": "./dist/main.js"
   },
   "files": [
     "dist",
+    "src",
+    "tests",
+    "tsconfig.json",
     "README.md",
-    "Dockerfile"
+    "Dockerfile",
+    "LICENSE",
+    "LICENSE-MIT",
+    "NOTICE.md"
   ],
   "type": "module",
   "scripts": {
-    "build": "esbuild src/main.ts --bundle --platform=node --format=esm --packages=external --target=node22 --outfile=dist/main.js",
+    "build": "esbuild src/main.ts src/credential-file.ts --bundle --external:./credential-file.js --platform=node --format=esm --packages=external --target=node22 --outdir=dist",
     "start": "node dist/main.js",
-    "test": "node --test tests/node-process.mjs",
+    "test": "node --test tests/*.mjs",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -24,11 +30,13 @@
     "@deepseek-ai/dsh-storage": "catalog:",
     "@deepseek-ai/dsh-storage-domain": "catalog:",
     "@deepseek-ai/dsh-storage-json": "catalog:",
+    "@dshfiles/bot-openai-dot": "workspace:*",
     "@dshfiles/bots": "workspace:*",
+    "@dshfiles/credential-port": "workspace:*",
+    "@dshfiles/dshx": "workspace:*",
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@dshfiles/dshx": "workspace:*",
     "@types/node": "catalog:",
     "esbuild": "0.28.2",
     "typescript": "catalog:"

@@ -22,7 +22,11 @@
   "exports": {
     ".": "./dist/index.js",
     "./package.json": "./package.json",
-    "./cordis.patch.yml": "./cordis.patch.yml"
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./adapter": {
+      "types": "./src/adapter.ts",
+      "default": "./dist/adapter.js"
+    }
   },
   "scripts": {
     "build": "dshx build",
@@ -34,8 +38,8 @@
   "dependencies": {
     "@dshfiles/bots": "workspace:*",
     "@dshfiles/credential-port": "workspace:*",
+    "@dshfiles/dshx": "workspace:*",
     "@dshfiles/plugin-ui": "workspace:*",
-    "@dshfiles/secret-catalog": "workspace:*",
     "playwright-core": "1.56.1",
     "react": "catalog:",
     "zod": "catalog:"
@@ -48,7 +52,7 @@
     "@deepseek-ai/dsh-launch-environment": "catalog:",
     "@deepseek-ai/dsh-subprocess": "catalog:",
     "@deepseek-ai/dsh-tools": "catalog:",
-    "@dshfiles/dshx": "workspace:*",
+    "@dshfiles/secret-catalog": "workspace:*",
     "@types/node": "catalog:",
     "@types/react": "catalog:",
     "@types/react-dom": "catalog:",
@@ -60,7 +64,13 @@
   "peerDependencies": {
     "@deepseek-ai/cordis": "~4.0.4",
     "@deepseek-ai/dsh": ">=0.2.1-rc.2 <0.3.0-0",
-    "@deepseek-ai/dsh-tools": ">=0.2.1-rc.2 <0.3.0-0"
+    "@deepseek-ai/dsh-tools": ">=0.2.1-rc.2 <0.3.0-0",
+    "@dshfiles/secret-catalog": ">=0.1.0 <0.2.0"
+  },
+  "peerDependenciesMeta": {
+    "@dshfiles/secret-catalog": {
+      "optional": true
+    }
   },
   "dsh": {
     "bundle": {

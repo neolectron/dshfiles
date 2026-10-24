@@ -370,6 +370,20 @@ function httpFixture(h: ReturnType<typeof fixture>, expiring = false) {
   }
 }
 describe('Dot adapter grant and HTTP persistence integration', () => {
+  it('offers store-backed management metadata and session binding without writing before an explicit grant', async () => {
+    const h = fixture()
+    const http = httpFixture(h)
+    expect(http.adapter.info.credentialManagement).toBeDefined()
+    const session = await http.adapter.open({ config, connectionId, signal: h.controller.signal })
+    try {
+      expect(session.bindCredentialReferences).toBeTypeOf('function')
+      expect(h.creates).toEqual([])
+      expect(h.updates).toEqual([])
+      expect(h.publications).toEqual([])
+    } finally {
+      await session.close()
+    }
+  })
   it('singleflights concurrent HTTP refresh and invokes one whole-pair persistence callback', async () => {
     let release: (() => void) | undefined
     const gate = new Promise<void>(resolve => {

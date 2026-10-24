@@ -1,8 +1,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+import { lstat, mkdtemp, realpath, rm } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { basename, dirname, join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { z } from 'zod'
 import { JsonText } from '@dshfiles/dshx/api'
 import { BotAdapterError, createBotAdapterRegistry, type BotSendInput } from '@dshfiles/bots/adapter'
+import { botsApi } from '@dshfiles/bots/api'
+import { startBotsNodeService } from '@dshfiles/bots/node'
 import { createDotAdapter } from '../src/adapter.js'
 import { DotHttp, segment, type HttpFetch } from '../src/http.js'
 import { DotCharacterPolicy, identifier, primarySchema } from '../src/protocol.js'
@@ -130,6 +135,72 @@ describe('Dot protocol and identity boundaries', () => {
     await session.close()
     dispose()
     expect(registry.list()).toEqual([])
+  })
+  it('omits both management capabilities without a credential write port while preserving manual polling', async () => {
+    const h = harness()
+    expect(h.adapter.info).not.toHaveProperty('credentialManagement')
+    const session = await h.open()
+    try {
+      expect(session).not.toHaveProperty('bindCredentialReferences')
+      expect(await session.poll({ remoteBotId: 'dot-fixture', conversationId: 'room-fixture', cursor: 'baseline-fixture', signal: signal() })).toMatchObject({
+        messages: [],
+        hasMore: false,
+      })
+      expect(h.resolved).toEqual(['secret:DOT_ACCESS', 'secret:DOT_SESSION'])
+    } finally {
+      await session.close()
+    }
+  })
+  it('refuses Engine management grants before opening or poisoning a no-store manual worker', async () => {
+    const parent = await realpath(tmpdir())
+    const root = await mkdtemp(join(parent, 'dot-capability-'))
+    const identity = await lstat(root)
+    const h = harness()
+    const registry = createBotAdapterRegistry()
+    registry.register(h.adapter)
+    const bearerToken = 'synthetic-no-store-management-service-auth'
+    let service: Awaited<ReturnType<typeof startBotsNodeService>> | undefined
+    try {
+      service = await startBotsNodeService({ storageRoot: join(root, 'service'), registry, bearerToken })
+      const origin = service.origin
+      const post = (path: string, value: z.infer<ReturnType<typeof z.json>>) =>
+        fetch(`${origin}${path}`, {
+          method: 'POST',
+          headers: { authorization: `Bearer ${bearerToken}`, 'content-type': 'application/json' },
+          body: JSON.stringify(value),
+        })
+      const snapshot = async (response: Response) => {
+        const schema = botsApi.methods.snapshot.output
+        if (schema === undefined) throw new Error('Missing canonical snapshot schema')
+        const parsed = await schema['~standard'].validate(JsonText.parse(await response.text(), z.json()))
+        if (parsed.issues !== undefined) throw new Error('Invalid synthetic snapshot')
+        return parsed.value
+      }
+      const input = { adapterId: h.adapter.info.id, label: 'Synthetic no-store Dot', config, acceptRisks: true }
+      expect((await post('/v1/connect', { ...input, manageCredentials: true })).status).toBe(409)
+      expect(h.resolved).toEqual([])
+      expect(h.calls).toEqual([])
+      const connected = await snapshot(await post('/v1/connect', input))
+      const connection = connected.connections[0]
+      const bot = connected.bots[0]
+      if (connection === undefined || bot === undefined) throw new Error('Missing synthetic identity')
+      expect(connection).toMatchObject({ status: 'connected', credentialManagement: false })
+      expect((await post('/v1/setCredentialManagement', { connectionId: connection.id, enabled: true, acceptRisks: true })).status).toBe(409)
+      const stillManual = await snapshot(await fetch(`${origin}/v1/snapshot`, { headers: { authorization: `Bearer ${bearerToken}` } }))
+      expect(stillManual.connections[0]).toMatchObject({ id: connection.id, status: 'connected', credentialManagement: false })
+      expect(h.resolved).toEqual(['secret:DOT_ACCESS', 'secret:DOT_SESSION'])
+      const sent = await post('/v1/send', { botId: bot.id, conversationId: 'room-fixture', requestId: request().requestId, text: request().text })
+      expect(sent.status).toBe(200)
+      expect(JsonText.parse(await sent.text(), z.json())).toMatchObject({ delivery: 'sent', text: request().text })
+    } finally {
+      await service?.close()
+      expect(dirname(root)).toBe(parent)
+      expect(basename(root).startsWith('dot-capability-')).toBe(true)
+      expect(await realpath(root)).toBe(root)
+      const current = await lstat(root)
+      expect([current.dev, current.ino]).toEqual([identity.dev, identity.ino])
+      await rm(root, { recursive: true, force: true })
+    }
   })
   it.each([
     { accessTokenRef: token, sessionTokenRef: 'secret:DOT_SESSION' },

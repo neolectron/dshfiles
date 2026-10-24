@@ -497,16 +497,22 @@ importers:
       '@deepseek-ai/dsh-storage-json':
         specifier: 'catalog:'
         version: 0.2.1-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-storage@0.2.1-rc.2(@deepseek-ai/cordis@4.0.4))
+      '@dshfiles/bot-openai-dot':
+        specifier: workspace:*
+        version: link:../../plugins/@dshfiles/bot-openai-dot
       '@dshfiles/bots':
         specifier: workspace:*
         version: link:../../plugins/@dshfiles/bots
+      '@dshfiles/credential-port':
+        specifier: workspace:*
+        version: link:../../plugins/@dshfiles/credential-port
+      '@dshfiles/dshx':
+        specifier: workspace:*
+        version: link:../../tooling/dshx/packages/dshx
       zod:
         specifier: 'catalog:'
         version: 4.4.3
     devDependencies:
-      '@dshfiles/dshx':
-        specifier: workspace:*
-        version: link:../../tooling/dshx/packages/dshx
       '@types/node':
         specifier: 'catalog:'
         version: 22.19.20
@@ -1408,12 +1414,12 @@ importers:
       '@dshfiles/credential-port':
         specifier: workspace:*
         version: link:../credential-port
+      '@dshfiles/dshx':
+        specifier: workspace:*
+        version: link:../../../tooling/dshx/packages/dshx
       '@dshfiles/plugin-ui':
         specifier: workspace:*
         version: link:../plugin-ui
-      '@dshfiles/secret-catalog':
-        specifier: workspace:*
-        version: link:../secret-catalog
       playwright-core:
         specifier: 1.56.1
         version: 1.56.1
@@ -1445,9 +1451,9 @@ importers:
       '@deepseek-ai/dsh-tools':
         specifier: 'catalog:'
         version: 0.2.1-rc.2(0ab00a8eb09daf0ab308290e757fa426)
-      '@dshfiles/dshx':
+      '@dshfiles/secret-catalog':
         specifier: workspace:*
-        version: link:../../../tooling/dshx/packages/dshx
+        version: link:../secret-catalog
       '@types/node':
         specifier: 'catalog:'
         version: 22.19.20

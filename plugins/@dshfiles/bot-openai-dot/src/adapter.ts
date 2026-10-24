@@ -57,32 +57,27 @@ export interface DotDependencies {
 
 export function createDotAdapter(dependencies: DotDependencies): BotAdapter {
   const now = dependencies.now ?? Date.now
-  return {
+  const adapter: BotAdapter = {
     info: {
       id: 'openai-dot',
       version: 1,
       name: 'OpenAI Dot (unofficial)',
-      description: 'Message your existing primary Dot. Text only; incoming messages are polled while DSH runs.',
-      risk: 'This unsupported private ChatGPT protocol may stop working or be denied. These credentials grant broad ChatGPT account access, not a Dot-only scope. DSH resolves vault references on the Host only. No browser extraction or challenge bypass. Renewal stays in memory unless you explicitly grant managed credential storage after identity verification. Only messages since linking are synchronized. Approvals and media require native ChatGPT. All admitted DSH browsers share the owner account authority.',
-      credentialManagement: {
-        label: 'Keep Dot credentials renewed in the vault',
-        description:
-          'Optional: create one new global provider-owned session bundle and switch both references together. Renewals replace that whole bundle. Original aliases are never changed or deleted. Revoking stops new work, not accepted writes. Provider/local crash windows may require reauthorization. No cross-host sharing or backend compare-and-swap.',
-      },
+      description: 'Message your existing primary Dot. Text only; incoming messages are polled while the Bots backend runs.',
+      risk: 'This unsupported private ChatGPT protocol may stop working or be denied. These credentials grant broad ChatGPT account access, not a Dot-only scope. References resolve only in the backend running this adapter. Local DSH vault aliases are not automatically shared with a standalone service. No browser extraction or challenge bypass. Renewal stays in memory unless you explicitly grant managed credential storage after identity verification. Only messages since linking are synchronized. Approvals and media require native ChatGPT. All admitted DSH browsers share the owner account authority.',
       fields: [
         {
           key: 'accessTokenRef',
           label: 'ChatGPT access token reference',
           kind: 'secret-reference',
           required: true,
-          help: 'An existing secret:ALIAS or secret:ALIAS@env reference. Never paste a token.',
+          help: 'An existing secret:ALIAS or secret:ALIAS@env reference in this adapter backend. Never paste a token.',
         },
         {
           key: 'sessionTokenRef',
           label: 'ChatGPT session token reference',
           kind: 'secret-reference',
           required: true,
-          help: 'An existing renewable session secret reference. No automatic credential acquisition.',
+          help: 'An existing renewable session reference in this adapter backend. No automatic credential acquisition or DSH-vault import.',
         },
       ],
     },
@@ -176,7 +171,6 @@ export function createDotAdapter(dependencies: DotDependencies): BotAdapter {
         credentials.verifyAccount(accountId)
         const session: BotAdapterSession = {
           accountId,
-          bindCredentialReferences: bind => credentials.run(() => credentials.bind(bind)),
           bots: [
             {
               remoteId: profile.id,
@@ -260,6 +254,7 @@ export function createDotAdapter(dependencies: DotDependencies): BotAdapter {
             http.close()
           },
         }
+        if (dependencies.store !== undefined) session.bindCredentialReferences = bind => credentials.run(() => credentials.bind(bind))
         return {
           ...session,
           poll: request => credentials.run(() => session.poll(request)),
@@ -274,4 +269,12 @@ export function createDotAdapter(dependencies: DotDependencies): BotAdapter {
       }
     },
   }
+  if (dependencies.store !== undefined) {
+    adapter.info.credentialManagement = {
+      label: 'Keep Dot credentials renewed in the vault',
+      description:
+        'Optional: create one new global provider-owned session bundle and switch both references together. Renewals replace that whole bundle. Original aliases are never changed or deleted. Revoking stops new work, not accepted writes. Provider/local crash windows may require reauthorization. No cross-host sharing or backend compare-and-swap.',
+    }
+  }
+  return adapter
 }

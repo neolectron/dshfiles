@@ -1,21 +1,44 @@
 #!/usr/bin/env node
+// SPDX-License-Identifier: AGPL-3.0-only
 import { constants } from 'node:fs'
 import { open } from 'node:fs/promises'
 import { isAbsolute } from 'node:path'
 import { z } from 'zod'
-import { createBotAdapterRegistry } from '@dshfiles/bots/adapter'
+import { createBotAdapterRegistry, type BotAdapter } from '@dshfiles/bots/adapter'
 import { startBotsNodeService } from '@dshfiles/bots/node'
+import { createDotAdapter } from '@dshfiles/bot-openai-dot/adapter'
+import { SecretReferenceResolver, type SecretCatalogValues } from '@dshfiles/credential-port'
+import { readCredentialFile } from './credential-file.js'
 
-const configSchema = z.object({
-  storageRoot: z.string().min(1).refine(isAbsolute),
-  tokenFile: z.string().min(1).refine(isAbsolute),
-  host: z.enum(['127.0.0.1', '0.0.0.0']).default('127.0.0.1'),
-  port: z.coerce.number().int().min(0).max(65535).default(8787),
-})
+// Concrete providers register at the app composition root, never in the engine or UI.
+const adapterFactories = new Map<string, (values: SecretCatalogValues) => BotAdapter>([
+  [
+    'openai-dot',
+    values => createDotAdapter({ resolveSecret: referenceText => SecretReferenceResolver.resolve({ referenceText, values, environmentValue: undefined }) }),
+  ],
+])
+
+const configSchema = z
+  .object({
+    storageRoot: z.string().min(1).refine(isAbsolute),
+    tokenFile: z.string().min(1).refine(isAbsolute),
+    host: z.enum(['127.0.0.1', '0.0.0.0']).default('127.0.0.1'),
+    port: z.coerce.number().int().min(0).max(65535).default(8787),
+    adapters: z
+      .string()
+      .default('')
+      .transform(text => (text === '' ? [] : text.split(',').map(name => name.trim())))
+      .refine(names => new Set(names).size === names.length && names.every(name => adapterFactories.has(name))),
+    credentialsFile: z.string().refine(isAbsolute).optional(),
+  })
+  .superRefine((value, context) => {
+    if (value.adapters.length > 0 && value.credentialsFile === undefined)
+      context.addIssue({ code: 'custom', message: 'Configured providers require an explicit service credential-reference file.' })
+  })
 
 // A private mounted file, not argv, a URL, an inherited provider token or a browser profile.
 async function readToken(path: string): Promise<string> {
-  const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW)
+  const file = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK)
   try {
     const info = await file.stat()
     if (!info.isFile() || (info.mode & 0o077) !== 0 || info.size < 32 || info.size > 514) throw new Error('Invalid service credential file')
@@ -33,6 +56,7 @@ async function readToken(path: string): Promise<string> {
 let service: Awaited<ReturnType<typeof startBotsNodeService>> | undefined
 let stopping: Promise<void> | undefined
 let stopRequested = false
+const registrations: Array<() => void> = []
 function stop() {
   stopping ??= (async () => {
     const deadline = setTimeout(() => {
@@ -42,6 +66,7 @@ function stop() {
     deadline.unref()
     try {
       await service?.close()
+      for (const unregister of registrations.splice(0).reverse()) unregister()
     } catch {
       process.stderr.write('Bots service shutdown failed safely. Inspect storage ownership before restarting.\n')
       process.exitCode = 1
@@ -62,7 +87,7 @@ process.once('SIGTERM', requestStop)
 async function main() {
   if (process.argv.length === 3 && process.argv[2] === '--help') {
     process.stdout.write(
-      'Usage: bots-service\nRequired: BOTS_SERVICE_DATA_DIR (private dedicated root), BOTS_SERVICE_TOKEN_FILE (private service credential)\nOptional: BOTS_SERVICE_HOST=127.0.0.1, BOTS_SERVICE_PORT=8787\nNo provider adapters are configured by this runner.\n',
+      'Usage: bots-service\nRequired: BOTS_SERVICE_DATA_DIR (private dedicated root), BOTS_SERVICE_TOKEN_FILE (private service credential)\nOptional: BOTS_SERVICE_HOST=127.0.0.1, BOTS_SERVICE_PORT=8787\nProviders: BOTS_SERVICE_ADAPTERS=openai-dot requires BOTS_SERVICE_CREDENTIALS_FILE (private read-only reference map). Default: no adapters.\n',
     )
     return
   }
@@ -72,18 +97,32 @@ async function main() {
     tokenFile: process.env.BOTS_SERVICE_TOKEN_FILE,
     host: process.env.BOTS_SERVICE_HOST,
     port: process.env.BOTS_SERVICE_PORT,
+    adapters: process.env.BOTS_SERVICE_ADAPTERS,
+    credentialsFile: process.env.BOTS_SERVICE_CREDENTIALS_FILE,
   })
   const bearerToken = await readToken(config.tokenFile)
   // Providers are explicit composition. An unconfigured standalone service never creates a replacement bot.
   const registry = createBotAdapterRegistry()
+  if (config.adapters.length > 0) {
+    if (config.credentialsFile === undefined) throw new Error('Provider credential references were not configured')
+    const values = await readCredentialFile(config.credentialsFile)
+    for (const name of config.adapters) {
+      const factory = adapterFactories.get(name)
+      if (factory === undefined) throw new Error('Unsupported provider')
+      registrations.push(registry.register(factory(values)))
+    }
+  }
   service = await startBotsNodeService({ storageRoot: config.storageRoot, bearerToken, registry, host: config.host, port: config.port })
   if (stopRequested) await stop()
-  else process.stdout.write(`${JSON.stringify({ status: 'listening', origin: service.origin, adapters: 'none-configured' })}\n`)
+  else
+    process.stdout.write(
+      `${JSON.stringify({ status: 'listening', origin: service.origin, adapters: config.adapters.length === 0 ? 'none-configured' : config.adapters.join(',') })}\n`,
+    )
 }
 try {
   await main()
 } catch {
-  process.stderr.write('Bots service could not start. Check explicit data directory, private credential file and listen settings.\n')
+  process.stderr.write('Bots service could not start. Check the data directory, listen settings, selected adapters and private credential files.\n')
   process.exitCode = 1
   await stop()
 }

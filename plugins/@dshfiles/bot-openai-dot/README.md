@@ -4,6 +4,14 @@
 
 Registers a v1 `BotAdapter` with `ctx.get('botAdapters')`; the provider-neutral Bots plugin owns UI, durable outbox, checkpoints and the three-second polling loop. This Host-only plugin adds no browser surface and performs no network requests until the user connects through Bots after accepting its explicit broad-account/unsupported-protocol warning.
 
+## Node composition
+
+`@dshfiles/bot-openai-dot/adapter` is an intentional dshx public module exposing the existing `createDotAdapter` factory and its dependency type. It can be constructed, configured and registered with the public Bots registry in ordinary Node without starting a DSH Host or reading credentials. The caller supplies the canonical reference resolver and optionally a writable credential store; the protocol, identity and safety rules stay in this provider.
+
+Without a store, both the management metadata and session reference-binding method are absent. Core refuses management grants without restarting or poisoning a healthy manual worker. Memory-only renewal remains available; nothing writes a caller's reference backend. With a store, the original explicit-consent and identity-bound write semantics remain unchanged.
+
+Secret Catalog is a **Host-entry-only optional peer** (and build/test dependency), not a dependency of the pure adapter. A DSH profile loading this package's root Host entry must still provide the Catalog package/API; standalone adapter consumers do not need that plugin graph. The adapter declares its direct dshx API runtime dependency. AGPL/source/provenance obligations apply to applications composing it, not just to its default Host entry.
+
 ## Credentials and linking
 
 Configuration has exactly two required reference fields: `accessTokenRef` and `sessionTokenRef`, each `secret:ALIAS` or `secret:ALIAS@env`. No raw tokens, browser/cookie extraction or implicit process-environment fallback. Existing credentials must already be stored by the user through their supported vault workflow. The canonical credential-port Host resolver reads the values; clients, tools and local history receive references only.
