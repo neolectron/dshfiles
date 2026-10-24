@@ -9,7 +9,7 @@
     "enabled": false
   },
   "globalDependencies": [".node-version", "pnpm-workspace.yaml", "tooling/dshx/tsconfig.base.json", "tsconfig.base.client.json"],
-  "globalEnv": ["NODE_ENV"],
+  "globalEnv": ["NODE_ENV", "DSHX_DSH_EXECUTABLE"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],

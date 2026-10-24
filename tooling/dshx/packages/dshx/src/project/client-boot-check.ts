@@ -186,7 +186,7 @@ const waitForHostResponse = async (url: string, timeoutMs = HOST_RESPONSE_TIMEOU
 }
 
 export const checkClientBoot = async (options: ClientBootCheckOptions): Promise<ClientBootCheckResult> => {
-  const executable = options.executable ?? 'dsh'
+  const executable = options.executable ?? ScratchProfileRuntime.dshExecutable()
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
   const port = options.port === 0 ? await findFreePort() : options.port
   let output = ''

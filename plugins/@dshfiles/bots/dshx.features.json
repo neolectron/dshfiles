@@ -260,6 +260,11 @@
           "id": "bots.service-client-uncertain-response",
           "file": "plugins/@dshfiles/bots/src/http-client.test.ts",
           "testName": "does not resend when a real accepted send loses its HTTP response"
+        },
+        {
+          "kind": "gherkin",
+          "id": "bots.remote-service-account-denied",
+          "featureFile": "tooling/dshx/e2e/features/bots-remote-service.feature"
         }
       ]
     }

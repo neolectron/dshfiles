@@ -52,7 +52,8 @@ const journeyInputs = [
 const bootInputs = [`${dshxRoot}/scripts/boot-check-web.mjs`, `${dshxRoot}/scripts/plugin-inventory.mjs`, `${dshxRoot}/scripts/boot-ignore.json`]
 
 /**
- * CI changes retries; DSHX_TOOL_VERSIONS carries binaries the Host runs that no file pins (jj). `DSHX_E2E_*` are the
+ * CI changes retries; DSHX_TOOL_VERSIONS carries binaries the Host runs that no file pins (jj).
+ * Root turbo.json hashes/passes DSHX_DSH_EXECUTABLE for the selected Host binary without owner-file duplication. `DSHX_E2E_*` are the
  * operational knobs (workers, failure ceiling, timeout override): they are passed through rather than hashed, because
  * they change how a run is driven, not what it proves.
  */
@@ -416,9 +417,17 @@ const generatedScriptNames = ['test:boot', 'test:e2e', 'test:e2e:smoke']
 
 const sameJson = (left, right) => JSON.stringify(left) === JSON.stringify(right)
 
-/** Compare (or with `write`, rewrite) each package's turbo.json and browser scripts against the plan. */
-const syncConfigs = async ({ write }) => {
-  const { configs } = await planBrowserTasks()
+/** Exact owner selection keeps regeneration from rewriting unrelated workspace packages. */
+export const selectBrowserTaskConfigs = (configs, owner) => {
+  if (owner === undefined) return configs
+  if (!configs.has(owner)) throw new Error(`No browser task configuration exists for owner ${owner}.`)
+  return new Map([[owner, configs.get(owner)]])
+}
+
+/** Compare (or with `write`, rewrite) the selected packages' turbo.json and browser scripts against the plan. */
+const syncConfigs = async ({ write, owner }) => {
+  const plan = await planBrowserTasks()
+  const configs = selectBrowserTaskConfigs(plan.configs, owner)
   const drift = []
   const written = []
   for (const [name, config] of configs) {
@@ -445,10 +454,12 @@ const syncConfigs = async ({ write }) => {
       }
     }
   }
-  for (const entry of await readdir(resolve(workspaceRoot, 'plugins/@dshfiles'), { withFileTypes: true })) {
-    const directory = `plugins/@dshfiles/${entry.name}`
-    if (!entry.isDirectory() || [...configs.values()].some(config => config.directory === directory)) continue
-    if (existsSync(resolve(workspaceRoot, directory, 'turbo.json'))) drift.push(`${directory}/turbo.json is stale: the package owns no browser task`)
+  if (owner === undefined) {
+    for (const entry of await readdir(resolve(workspaceRoot, 'plugins/@dshfiles'), { withFileTypes: true })) {
+      const directory = `plugins/@dshfiles/${entry.name}`
+      if (!entry.isDirectory() || [...configs.values()].some(config => config.directory === directory)) continue
+      if (existsSync(resolve(workspaceRoot, directory, 'turbo.json'))) drift.push(`${directory}/turbo.json is stale: the package owns no browser task`)
+    }
   }
   if (written.length > 0) {
     const formatted = spawnSync('pnpm', ['exec', 'oxfmt', '--config', '.oxfmtrc.json', ...written], { cwd: workspaceRoot, stdio: 'inherit' })
@@ -491,10 +502,18 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     process.exit(process.exitCode ?? 0)
   }
   const write = process.argv.includes('--write')
-  const drift = await syncConfigs({ write })
+  const ownerIndex = process.argv.indexOf('--owner')
+  const owner = ownerIndex === -1 ? undefined : process.argv[ownerIndex + 1]
+  if (ownerIndex !== -1 && (owner === undefined || owner.startsWith('--'))) {
+    console.error('browser-tasks: --owner needs an exact package name, e.g. --owner @dshfiles/bots')
+    process.exit(2)
+  }
+  const drift = await syncConfigs({ write, owner })
   if (write) console.log(drift.length === 0 ? 'Browser task configs already up to date.' : `Rewrote:\n  ${drift.join('\n  ')}`)
   else if (drift.length > 0) {
-    console.error(`Browser task configs drifted from the feature files; run node tooling/dshx/scripts/browser-tasks.mjs --write:\n  ${drift.join('\n  ')}`)
+    console.error(
+      `Browser task configs drifted from the feature files; run node tooling/dshx/scripts/browser-tasks.mjs --write${owner === undefined ? '' : ` --owner ${owner}`}:\n  ${drift.join('\n  ')}`,
+    )
     process.exitCode = 1
   } else console.log('Browser task configs match the feature files.')
 }

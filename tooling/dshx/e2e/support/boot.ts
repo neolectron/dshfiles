@@ -8,6 +8,7 @@ import { compositionFailures, readProfileComposition } from '../../packages/dshx
 import { spawnOwnedProcess, stopOwnedProcess } from '../../packages/dshx/src/project/owned-process.js'
 import { recordScratchProcess, scratchLedgerPath } from '../../scripts/reap-scratch-processes.mjs'
 import { isolatedHostEnvironment, redactHostOutput } from './scratch-profile.js'
+import { ScratchProfileRuntime } from '../../packages/dshx/src/project/scratch-profile.js'
 import { createScratchHostLifecycle, type ScratchHostInstance } from './scratch-host-lifecycle.js'
 
 // Registry dependencies come from the checked-in seed, not the live ~/.dsh profile, so a journey (and its cached
@@ -48,7 +49,7 @@ const validateComposition = async (prepared: PreparedBootProfile, timeoutMs: num
     profile: prepared.profile,
     profileRoot: prepared.profileRoot,
     dshHome: prepared.homeRoot,
-    executable: 'dsh',
+    executable: ScratchProfileRuntime.dshExecutable(),
     timeoutMs,
   })
   const missingBundles = compositionFailures(dump, prepared.expectedBundles)
@@ -125,7 +126,7 @@ export const startScratchProfile = async (
     const scratchEnvironment = isolatedHostEnvironment(prepared.homeRoot, prepared.profileRoot)
     const hostPath = pathPrefix === undefined ? scratchEnvironment.PATH : [pathPrefix, scratchEnvironment.PATH].filter(Boolean).join(delimiter)
     const hostEnvironment = hostPath === undefined ? scratchEnvironment : { ...scratchEnvironment, PATH: hostPath }
-    const host = spawnOwnedProcess('dsh', ['--profile', prepared.profile, '--port', String(port), '--no-open'], {
+    const host = spawnOwnedProcess(ScratchProfileRuntime.dshExecutable(), ['--profile', prepared.profile, '--port', String(port), '--no-open'], {
       cwd: DSHFILES_ROOT,
       // directory-picker-auto mounts the OS chooser on a darwin/win32 loopback Host, which a browser cannot drive; an SSH
       // launch is its documented signal for the in-app browse picker, so folder journeys behave the same on every platform.

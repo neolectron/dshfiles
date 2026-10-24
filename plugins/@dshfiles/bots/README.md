@@ -16,7 +16,13 @@ The API uses authenticated `GET /v1/snapshot` and JSON `POST /v1/<method>` route
 
 The public `@dshfiles/bots/node` entry adds private JSON storage ownership and shutdown around this boundary. The [normal Node app](../../../apps/bots-service/README.md) has a CLI and a verified network-disabled container smoke; its runner reports no configured adapters by default. The DSH Host now supports explicit profile-owned `mode: "service"`, `serviceOrigin` and `serviceTokenReference` configuration. Omitted configuration preserves local mode; service fields without explicit service mode are refused. Service mode opens no local Bots store or workers, never falls back on failure, and disposing its HTTP client does not stop the Node owner. Origin must be root HTTPS or literal-loopback HTTP; redirects are forbidden. The service credential is resolved per request through the Host's canonical reference resolver, or `DSH_BOTS_SERVICE_TOKEN` only when the reference is empty. This is deployment configuration, not a live settings switch or data migration; activation is still separate. The native storageDomain service remains an activation dependency for compatibility, but no Bots domain is opened in service mode.
 
-Provider login/composition and final deployment remain unfinished. DSH vault aliases/provider references are **not automatically provisioned into the standalone worker**; that credential authority/onboarding boundary still needs implementation. The real Yield UI test is separate evidence, not a backend test.
+The private DSH account-authority channel and normal Node composition are implemented. External account mode uses a nonsecret selected-account ID and a separately authenticated backend capability; it never copies vault aliases, cookies or refresh storage into the worker. A real scratch GUI now verifies remote account-mode metadata, explicit risks and sanitized denial, with no local Host Bots domain, private browser bytes or provider requests. Real account acceptance and live activation remain unverified; the real Yield UI exchange is separate, not a backend test.
+
+![Remote account-ID form with explicit risks](<docs/screenshots/bots-remote-account.png>)
+
+![Sanitized refusal without a replacement bot](<docs/screenshots/bots-remote-account-denied.png>)
+
+_Synthetic remote-service denial fixture only. These captures prove the account-mode form and safe failure path, not successful OpenAI authentication._
 
 ## Use
 

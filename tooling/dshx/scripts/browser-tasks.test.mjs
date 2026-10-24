@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
+import { JsonText } from '@dshfiles/dshx/api'
+import { z } from 'zod'
 import {
   cucumberExpressionPattern,
   featureOwner,
@@ -14,9 +16,43 @@ import {
   planBrowserTasks,
   resolveBrowserSelection,
   runtimeDistDigest,
+  selectBrowserTaskConfigs,
 } from './browser-tasks.mjs'
 
 const featuresDir = resolve(dirname(fileURLToPath(import.meta.url)), '../e2e/features')
+
+test('all strict-env tasks receive and hash the explicit Host executable selection', async () => {
+  const turbo = JsonText.parse(
+    await readFile(resolve(dirname(fileURLToPath(import.meta.url)), '../../../turbo.json'), 'utf8'),
+    z.object({ globalEnv: z.array(z.string()) }),
+  )
+  assert.ok(turbo.globalEnv.includes('DSHX_DSH_EXECUTABLE'))
+})
+
+test('unscoped browser regeneration retains every original owner', () => {
+  const configs = new Map([
+    ['@dshfiles/bots', { directory: 'bots' }],
+    ['@dshfiles/home', { directory: 'home' }],
+  ])
+  assert.equal(selectBrowserTaskConfigs(configs), configs)
+})
+
+test('exact scoped regeneration selects one original config without mutating other owners', () => {
+  const bots = { directory: 'bots' }
+  const home = { directory: 'home' }
+  const configs = new Map([
+    ['@dshfiles/bots', bots],
+    ['@dshfiles/home', home],
+  ])
+  assert.deepEqual([...selectBrowserTaskConfigs(configs, '@dshfiles/bots')], [['@dshfiles/bots', bots]])
+  assert.equal(configs.get('@dshfiles/home'), home)
+  assert.equal(configs.size, 2)
+})
+
+test('unknown, blank and wildcard browser owners cannot silently skip generation', () => {
+  const configs = new Map([['@dshfiles/bots', { directory: 'bots' }]])
+  for (const owner of ['', '*', '@dshfiles/missing', 'bots']) assert.throws(() => selectBrowserTaskConfigs(configs, owner), /No browser task configuration/)
+})
 
 test('a {string} parameter matches Gherkin strings with escaped quotes', () => {
   const pattern = cucumberExpressionPattern('the fake model is asked to {string}')

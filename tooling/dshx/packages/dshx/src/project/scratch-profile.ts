@@ -186,6 +186,13 @@ const isolatedHostEnvironment = (home: string, profileRoot: string, source: Node
 const redactHostOutput = (output: string): string => output.replace(/http:\/\/127\.0\.0\.1:\d+\/[^\s]*/g, match => `${new URL(match).origin}/[redacted]`)
 
 export class ScratchProfileRuntime {
+  /** Select an explicit installed CLI without letting a PATH launcher replace the scratch home. */
+  static dshExecutable(source: NodeJS.ProcessEnv = process.env): string {
+    const value = source.DSHX_DSH_EXECUTABLE
+    if (value === undefined) return 'dsh'
+    if (!isAbsolute(value) || value !== value.trim() || /[\0\r\n]/u.test(value)) throw new Error('DSHX_DSH_EXECUTABLE must name an absolute executable path.')
+    return value
+  }
   static readonly hostEnvironment = isolatedHostEnvironment
   static readonly redactHostOutput = redactHostOutput
 }

@@ -6,6 +6,7 @@ import { createConnection, createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
+import { ScratchProfileRuntime } from '../packages/dshx/src/project/scratch-profile.ts'
 import { connectDshPlatformClient } from '../packages/dshx/src/platform/client.ts'
 
 const root = await mkdtemp(join(tmpdir(), 'dshx-multi-host-'))
@@ -28,7 +29,7 @@ const stopRuntime = async runtime => {
 }
 
 const startRuntime = async ({ id, home }) => {
-  const child = spawn('dsh', ['--profile', 'web', '--port', '0', '--no-open'], {
+  const child = spawn(ScratchProfileRuntime.dshExecutable(), ['--profile', 'web', '--port', '0', '--no-open'], {
     cwd: workspacePath,
     env: {
       PATH: process.env.PATH,

@@ -20,6 +20,7 @@ import { join, resolve } from 'node:path'
 import { spawn } from 'node:child_process'
 import { createServer } from 'node:net'
 import { fileURLToPath } from 'node:url'
+import { ScratchProfileRuntime } from '../packages/dshx/src/project/scratch-profile.ts'
 
 const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)))
 const playwrightCli = join(repoRoot, 'node_modules/.bin', `playwright-cli${process.platform === 'win32' ? '.cmd' : ''}`)
@@ -27,9 +28,7 @@ const playwrightCli = join(repoRoot, 'node_modules/.bin', `playwright-cli${proce
 /** Fail with the reason rather than an opaque spawn ENOENT. */
 const requirePlaywrightCli = () => {
   if (existsSync(playwrightCli)) return playwrightCli
-  throw new Error(
-    `${playwrightCli} is missing. This gate drives a real browser, so it needs @playwright/cli installed in tooling/dshx.`,
-  )
+  throw new Error(`${playwrightCli} is missing. This gate drives a real browser, so it needs @playwright/cli installed in tooling/dshx.`)
 }
 const outputDirectory = join(repoRoot, 'output/playwright/smoke-client-slot')
 const bootTimeoutMs = 180_000
@@ -180,7 +179,7 @@ const freePort = () =>
   })
 
 async function bootDsh(profile, port) {
-  const child = spawn('dsh', ['--profile', profile, '--port', String(port), '--no-open'], {
+  const child = spawn(ScratchProfileRuntime.dshExecutable(), ['--profile', profile, '--port', String(port), '--no-open'], {
     cwd: repoRoot,
     stdio: ['pipe', 'pipe', 'pipe'],
   })

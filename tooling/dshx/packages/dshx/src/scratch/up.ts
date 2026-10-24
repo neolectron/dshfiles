@@ -174,7 +174,7 @@ export const scratchUp = async (
     const port = options.port ?? (await findFreePort())
     options.onProgress(`starting dsh on 127.0.0.1:${port}`)
     const hostArgs = ['--profile', prepared.profile, '--port', String(port), '--no-open']
-    hostPid = ScratchStateRuntime.spawnDetached('dsh', hostArgs, {
+    hostPid = ScratchStateRuntime.spawnDetached(ScratchProfileRuntime.dshExecutable(), hostArgs, {
       cwd: DSHFILES_ROOT,
       env: ScratchProfileRuntime.hostEnvironment(home, prepared.profileRoot, hostSource),
       log: hostLog,

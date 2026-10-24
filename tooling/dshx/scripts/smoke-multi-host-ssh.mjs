@@ -6,8 +6,15 @@ import { tmpdir, homedir } from 'node:os'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { z } from 'zod'
-import { buildSshOptions, quoteRemoteArgument, redactLaunchSecrets as redact, reserveLoopbackPort, waitForSshLocalForward } from './smoke-multi-host-ssh-utils.mjs'
+import {
+  buildSshOptions,
+  quoteRemoteArgument,
+  redactLaunchSecrets as redact,
+  reserveLoopbackPort,
+  waitForSshLocalForward,
+} from './smoke-multi-host-ssh-utils.mjs'
 import WebSocket from 'ws'
+import { ScratchProfileRuntime } from '../packages/dshx/src/project/scratch-profile.ts'
 
 const absolutePathSchema = z
   .string()
@@ -232,7 +239,7 @@ const makeGateway = ({ localPort, cookie }) => {
 }
 
 const startLocalRuntime = async home => {
-  const child = spawn('dsh', ['--profile', 'web', '--port', '0', '--no-open'], {
+  const child = spawn(ScratchProfileRuntime.dshExecutable(), ['--profile', 'web', '--port', '0', '--no-open'], {
     cwd: tmpdir(),
     env: { ...process.env, DSH_HOME: home },
     stdio: ['ignore', 'pipe', 'pipe'],
@@ -417,7 +424,9 @@ try {
   const restartedGateway = makeGateway({ localPort: restartedTunnel.localPort, cookie: restartedCookie })
   const restored = await restartedGateway.runSafe('session', 'list', { _request: {} })
   assert.ok(restored.ok, `a restarted runtime issues a fresh cookie: ${restored.message}`)
-  const restoredPlatform = await connectDshPlatformClient({ url: `http://${tunnelHost}:${restartedTunnel.localPort}/?token=${new URL(replayedLaunch).searchParams.get('token')}` })
+  const restoredPlatform = await connectDshPlatformClient({
+    url: `http://${tunnelHost}:${restartedTunnel.localPort}/?token=${new URL(replayedLaunch).searchParams.get('token')}`,
+  })
   const restoredHistory = await restoredPlatform.sessions.history(remoteSession.sessionId)
   assert.ok(JSON.stringify(restoredHistory.records).includes('Remote proof'))
   const restoredSessions = await restoredPlatform.sessions.list()

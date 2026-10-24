@@ -17,6 +17,8 @@ pnpm --dir tooling/dshx --filter @dshfiles/dshx build   # once per checkout, and
 
 ## Launch
 
+If `dsh` on PATH is a user launcher that overwrites `HOME`/`DSH_HOME`, set `DSHX_DSH_EXECUTABLE` to the absolute declared installed DSH CLI executable for scratch commands and E2E; this selects the same unwrapped executable for composition inspection and Host startup without changing the launcher or weakening home isolation.
+
 On NixOS or another system where Playwright's pinned browser cannot run, explicitly set `DSHX_E2E_CHROMIUM_EXECUTABLE=/absolute/path/to/chrome` for `dshx dev` and E2E; this uses an isolated scratch profile, records the override's `--version` in E2E cache evidence, and must be reported as a different browser version.
 
 ```sh

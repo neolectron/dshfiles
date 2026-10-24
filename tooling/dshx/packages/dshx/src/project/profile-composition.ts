@@ -21,7 +21,7 @@ export const compositionFailures = (dump: string, expectedBundles: readonly stri
 const UNSUPPORTED_NODE_MARKER = 'node-addon-require-builtin unsupported'
 
 export const readProfileComposition = async (options: ProfileCompositionOptions): Promise<string> => {
-  const child = spawnOwnedProcess(options.executable ?? 'dsh', ['--profile', options.profile, '--dump-config'], {
+  const child = spawnOwnedProcess(options.executable ?? ScratchProfileRuntime.dshExecutable(), ['--profile', options.profile, '--dump-config'], {
     cwd: options.projectRoot,
     env: ScratchProfileRuntime.hostEnvironment(options.dshHome, options.profileRoot),
     stdio: ['ignore', 'pipe', 'pipe'],

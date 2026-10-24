@@ -58,8 +58,7 @@ If none applies, stop: **Clean**.
    step (`steps.ts`, a boot or navigation helper) can break plugins it does not
    name: also run `pnpm check:e2e:smoke`. A new or retagged feature file, or a
    step moved between step files, needs
-   `node tooling/dshx/scripts/browser-tasks.mjs --write` (`dshx check` fails
-   on drift).
+   `node tooling/dshx/scripts/browser-tasks.mjs --write --owner @dshfiles/<owner>` for the affected owner (`dshx check` fails on drift); omit `--owner` only for an intentionally broad regeneration.
 5. **Triage each failure** (look at the failure screenshot, `shot` summary or
    the journey's `test-results/*/error-context.md`):
    - **Doc drift** (a name or step changed, the feature works by hand): fix
