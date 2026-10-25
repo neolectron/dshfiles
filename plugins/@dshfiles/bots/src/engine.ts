@@ -58,6 +58,8 @@ const adapterPageSchema = z
 
 class ServiceError extends PluginApiError {}
 class TimedOutError extends ServiceError {}
+const terminalAdapterError = (error: unknown): boolean =>
+  error instanceof BotAdapterError && ['auth-required', 'access-denied', 'identity-mismatch', 'protocol-error'].includes(error.code)
 const refusal = (message: string): never => {
   throw new ServiceError(message)
 }
@@ -87,6 +89,7 @@ interface Worker {
   ready: Promise<void>
   pollIndex: number
   failures: number
+  retiring: boolean
 }
 export interface BotsEngineOptions {
   readonly store: BotsStore
@@ -150,6 +153,10 @@ export class BotsEngine {
   }
 
   private active(worker: Worker): boolean {
+    return !worker.retiring && this.ownsWorker(worker)
+  }
+
+  private ownsWorker(worker: Worker): boolean {
     return (
       !this.closed &&
       !this.store.failed &&
@@ -267,6 +274,7 @@ export class BotsEngine {
       ready: Promise.resolve(),
       pollIndex: 0,
       failures: 0,
+      retiring: false,
     }
     this.workers.set(connectionId, worker)
     worker.ready = this.openWorker(worker)
@@ -497,12 +505,8 @@ export class BotsEngine {
       delayAfterFailure = Math.min(120000, 1000 * 2 ** Math.min(worker.failures, 7))
       if (error instanceof BotAdapterError && error.code === 'rate-limited') delayAfterFailure = Math.max(30000, delayAfterFailure)
       await this.recordError(worker, error)
-      if (
-        this.store.failed ||
-        error instanceof ServiceError ||
-        (error instanceof BotAdapterError && ['auth-required', 'access-denied', 'identity-mismatch', 'protocol-error'].includes(error.code))
-      ) {
-        this.stopWorker(worker.connectionId)
+      if (this.store.failed || error instanceof ServiceError || terminalAdapterError(error)) {
+        if (this.active(worker)) this.stopWorker(worker.connectionId)
         return
       }
     }
@@ -513,11 +517,23 @@ export class BotsEngine {
   private async recordError(worker: Worker, error: unknown): Promise<void> {
     if (this.store.failed) return
     await this.store.change(state => {
-      if (!this.active(worker)) return
+      if (!this.ownsWorker(worker)) return
       const connection = connectionOf(state, worker.connectionId).connection
       connection.status = error instanceof BotAdapterError && error.code === 'auth-required' ? 'auth-required' : 'error'
       connection.error = safeError(error)
     })
+  }
+
+  /** Publish the failure after the send outcome is durable; never retire a replacement worker after an awaited write. */
+  private async retireTerminalWorker(worker: Worker, error: unknown): Promise<void> {
+    if (!terminalAdapterError(error) || !this.active(worker)) return
+    // A poll may already be queued behind this write. Fence its commit before awaiting durability.
+    worker.retiring = true
+    try {
+      await this.recordError(worker, error)
+    } finally {
+      if (this.workers.get(worker.connectionId) === worker) this.stopWorker(worker.connectionId)
+    }
   }
 
   private validatedConfig(adapter: BotAdapter, supplied: Readonly<Record<string, string>>): Record<string, string> {
@@ -806,8 +822,10 @@ export class BotsEngine {
     })
     let localId = existing?.message.id ?? this.id()
     if (existing !== undefined) {
-      const reconciliation = await this.network(worker, signal => session.reconcile(networkInput(signal))).catch(() => {
+      let reconciliationError: unknown
+      const reconciliation = await this.network(worker, signal => session.reconcile(networkInput(signal))).catch(error => {
         if (this.store.failed) throw new PluginApiError(STORAGE_FAILED)
+        reconciliationError = error
         return { kind: 'unknown' as const }
       })
       if (!this.active(worker)) return this.localMessage(localId, input.text)
@@ -827,6 +845,7 @@ export class BotsEngine {
             message.updatedAt = this.now()
           }
         })
+        await this.retireTerminalWorker(worker, reconciliationError)
         return this.localMessage(localId, input.text)
       }
     }
@@ -887,6 +906,7 @@ export class BotsEngine {
         message.notice = this.active(worker) ? safeError(error) : UNKNOWN_DELIVERY
         message.updatedAt = this.now()
       })
+      await this.retireTerminalWorker(worker, error)
     }
     return this.localMessage(localId, input.text)
   }

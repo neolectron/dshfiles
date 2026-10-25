@@ -218,6 +218,177 @@ describe('durable provider-neutral Bots engine', () => {
     ])
   })
 
+  it.each<BotAdapterError['code']>(['auth-required', 'access-denied', 'identity-mismatch', 'protocol-error'])(
+    'retires the connection immediately after a terminal send error (%s)',
+    async code => {
+      const { engine, adapter } = fixture()
+      const input = await connect(engine)
+      await vi.advanceTimersByTimeAsync(0)
+      const pollCount = adapter.polls.length
+      adapter.onSend = async () => {
+        throw new BotAdapterError(code, 'Reconnect the fixture connection.')
+      }
+      const request = { ...input, requestId: randomUUID(), text: 'original terminal body' }
+      const message = await engine.send(request)
+      expect(message.delivery).toBe(code === 'auth-required' || code === 'access-denied' ? 'failed' : 'uncertain')
+      expect(engine.snapshot().connections[0]?.status).toBe(code === 'auth-required' ? 'auth-required' : 'error')
+      expect(engine.snapshot().connections[0]?.error).toBe('Reconnect the fixture connection.')
+      expect(adapter.closes).toBe(1)
+      await expect(engine.send({ ...request, requestId: randomUUID() })).rejects.toThrow('Reconnect')
+      await vi.advanceTimersByTimeAsync(10000)
+      expect(adapter.polls).toHaveLength(pollCount)
+      expect(adapter.sends).toHaveLength(1)
+
+      adapter.onSend = async send => echo(send)
+      adapter.onReconcile = async () => ({ kind: 'found', message: echo(adapter.sends[0]!) })
+      await engine.reconnect(input)
+      expect((await engine.send(request)).delivery).toBe('sent')
+      expect(adapter.reconciles.map(send => send.requestId)).toEqual([request.requestId])
+      expect(adapter.sends).toHaveLength(1)
+    },
+  )
+
+  it.each<BotAdapterError['code']>(['auth-required', 'access-denied', 'identity-mismatch', 'protocol-error'])(
+    'retires a terminal reconciliation failure without replaying the original send (%s)',
+    async code => {
+      const { engine, adapter } = fixture()
+      const input = await connect(engine)
+      await vi.advanceTimersByTimeAsync(0)
+      adapter.onSend = async () => {
+        throw new BotAdapterError('delivery-unknown', 'Fixture delivery was interrupted.')
+      }
+      const request = { ...input, requestId: randomUUID(), text: 'reconcile original body' }
+      expect((await engine.send(request)).delivery).toBe('uncertain')
+      adapter.onReconcile = async () => {
+        throw new BotAdapterError(code, 'Reconnect before reconciling the fixture.')
+      }
+      expect((await engine.send(request)).delivery).toBe('uncertain')
+      expect(engine.snapshot().connections[0]?.status).toBe(code === 'auth-required' ? 'auth-required' : 'error')
+      expect(engine.snapshot().connections[0]?.error).toBe('Reconnect before reconciling the fixture.')
+      expect(adapter.closes).toBe(1)
+      await expect(engine.send({ ...request, requestId: randomUUID() })).rejects.toThrow('Reconnect')
+      expect(adapter.sends).toHaveLength(1)
+
+      adapter.onReconcile = async () => ({ kind: 'not-found' })
+      adapter.onSend = async send => echo(send)
+      await engine.reconnect(input)
+      expect((await engine.send(request)).delivery).toBe('sent')
+      expect(adapter.reconciles.map(send => send.requestId)).toEqual([request.requestId, request.requestId])
+      expect(adapter.sends.map(send => [send.requestId, send.text])).toEqual([
+        [request.requestId, request.text],
+        [request.requestId, request.text],
+      ])
+    },
+  )
+
+  it.each<BotAdapterError['code']>(['rate-limited', 'unavailable', 'delivery-unknown'])(
+    'does not retire a connection after a transient send error (%s)',
+    async code => {
+      const { engine, adapter } = fixture()
+      const input = await connect(engine)
+      adapter.onSend = async () => {
+        throw new BotAdapterError(code, 'Transient fixture failure.')
+      }
+      const request = { ...input, requestId: randomUUID(), text: 'transient body' }
+      expect((await engine.send(request)).delivery).toBe(code === 'rate-limited' ? 'failed' : 'uncertain')
+      expect(engine.snapshot().connections[0]?.status).toBe('connected')
+      expect(adapter.closes).toBe(0)
+      adapter.onSend = async send => echo(send)
+      expect((await engine.send({ ...request, requestId: randomUUID() })).delivery).toBe('sent')
+      expect(adapter.sends).toHaveLength(2)
+    },
+  )
+
+  it('does not let a late poll restore a terminally failed send connection', async () => {
+    const { engine, adapter } = fixture()
+    const input = await connect(engine)
+    const page = deferred<Awaited<ReturnType<BotAdapterSession['poll']>>>()
+    adapter.onPoll = async () => page.promise
+    await vi.advanceTimersByTimeAsync(0)
+    adapter.onSend = async () => {
+      throw new BotAdapterError('access-denied', 'The fixture provider refused access.')
+    }
+    await engine.send({ ...input, requestId: randomUUID(), text: 'terminal while polling' })
+    page.resolve({ messages: [remote('late-poll')], cursor: 'late-cursor', hasMore: false })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(engine.snapshot().connections[0]?.status).toBe('error')
+    expect(messages(engine, input).some(message => message.remoteId === 'late-poll')).toBe(false)
+    expect(adapter.closes).toBe(1)
+  })
+
+  it('fences a poll that queues its success while terminal connection health is being persisted', async () => {
+    const { engine, adapter, disk } = fixture()
+    const input = await connect(engine)
+    const page = deferred<Awaited<ReturnType<BotAdapterSession['poll']>>>()
+    adapter.onPoll = async () => page.promise
+    await vi.advanceTimersByTimeAsync(0)
+    disk.beforePut(async value => {
+      if (value.connections[0]?.connection.error === 'Terminal fixture refusal.') {
+        page.resolve({ messages: [remote('queued-late-poll')], cursor: 'queued-late-cursor', hasMore: false })
+        await vi.advanceTimersByTimeAsync(0)
+      }
+    })
+    adapter.onSend = async () => {
+      throw new BotAdapterError('access-denied', 'Terminal fixture refusal.')
+    }
+    await engine.send({ ...input, requestId: randomUUID(), text: 'terminal persistence race' })
+    await vi.advanceTimersByTimeAsync(0)
+    expect(engine.snapshot().connections[0]?.status).toBe('error')
+    expect(messages(engine, input).some(message => message.remoteId === 'queued-late-poll')).toBe(false)
+    expect(adapter.closes).toBe(1)
+  })
+
+  it('keeps a confirmed echo sent even when its send call later reports a terminal failure', async () => {
+    const { engine, adapter } = fixture()
+    const input = await connect(engine)
+    const gate = deferred<void>()
+    adapter.onSend = async () => {
+      await gate.promise
+      throw new BotAdapterError('auth-required', 'The fixture login expired after delivery.')
+    }
+    const request = { ...input, requestId: randomUUID(), text: 'echo wins terminal race' }
+    const sending = engine.send(request)
+    await vi.advanceTimersByTimeAsync(0)
+    adapter.onPoll = async () => ({ messages: [echo(adapter.sends[0]!)], cursor: 'echo-confirmed', hasMore: false })
+    await vi.advanceTimersByTimeAsync(1000)
+    gate.resolve()
+    expect((await sending).delivery).toBe('sent')
+    expect(engine.snapshot().connections[0]?.status).toBe('auth-required')
+    expect(adapter.closes).toBe(1)
+  })
+
+  it.each(['message', 'connection'])('never lets a terminal %s commit retire or overwrite a newer reconnect worker', async phase => {
+    const { engine, adapter, disk } = fixture()
+    const input = await connect(engine)
+    const committing = deferred<void>()
+    const release = deferred<void>()
+    disk.beforePut(async value => {
+      if (
+        phase === 'message'
+          ? value.messages.some(row => row.message.delivery === 'failed')
+          : value.connections[0]?.connection.error === 'Old fixture worker expired.'
+      ) {
+        committing.resolve()
+        await release.promise
+      }
+    })
+    adapter.onSend = async () => {
+      throw new BotAdapterError('auth-required', 'Old fixture worker expired.')
+    }
+    const sending = engine.send({ ...input, requestId: randomUUID(), text: 'old worker body' })
+    await committing.promise
+    const reconnecting = engine.reconnect(input)
+    release.resolve()
+    await sending
+    await reconnecting
+    expect(engine.snapshot().connections[0]?.status).toBe('connected')
+    expect(engine.snapshot().connections[0]?.error).toBeNull()
+    expect(adapter.closes).toBe(1)
+    adapter.onSend = async send => echo(send)
+    expect((await engine.send({ ...input, requestId: randomUUID(), text: 'fresh worker body' })).delivery).toBe('sent')
+    expect(adapter.closes).toBe(1)
+  })
+
   it('reconciles a retained intent after restart and never acknowledges a stale completion', async () => {
     const first = fixture()
     const input = await connect(first.engine)
