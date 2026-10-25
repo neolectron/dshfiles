@@ -12,6 +12,10 @@ A first-class workspace for **existing, long-lived remote bots**. Open **Bots** 
 
 The user-supplied [BDots reference](https://github.com/fayazara/bdots) informs connection ownership and interrupted-action recovery, not a replacement bot/model. [Findings and implementation decisions](<docs/bdots-learnings.md>) explain the concrete terminal-failure state fix, patterns already covered, and the different provider/auth architecture.
 
+![Synthetic terminal refusal retains the message and stops delivery](<docs/screenshots/bots-terminal-failure.png>)
+
+_Scratch-only regression: a typed refusal immediately makes the connection read-only. Reconnect does not resend the original message._
+
 ## Node HTTP service boundary
 
 The `@dshfiles/bots/server` entry is an embeddable Node HTTP boundary over the same private `BotsEngine`, not a proxy to the running DSH and not another outbox. Its deployment supplies a `BotsStore`, an adapter registry and a separate service bearer token. Default binding is loopback on an ephemeral port; an operator may explicitly choose a container bind. It does not supply TLS: keep plain HTTP on loopback/private container transport, or terminate TLS at a trusted reverse proxy before wider exposure. The server owns and closes its engine, but the composition root owns persistence and registry registrations.

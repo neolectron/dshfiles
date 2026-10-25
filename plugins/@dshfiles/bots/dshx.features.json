@@ -104,6 +104,11 @@
         },
         {
           "kind": "gherkin",
+          "id": "bots.terminal-send-failure",
+          "featureFile": "tooling/dshx/e2e/features/bots-terminal-failure.feature"
+        },
+        {
+          "kind": "gherkin",
           "id": "bots.credential-management",
           "featureFile": "tooling/dshx/e2e/features/bots-credential-management.feature"
         },

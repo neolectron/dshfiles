@@ -5,7 +5,7 @@ import { PluginQueryProvider, QueryClient } from '@dshfiles/plugin-ui/query'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest'
 import { botsApi } from './api.js'
 import { BotsPanel } from './bots-panel.js'
-import type { BotsSnapshot } from './contract.js'
+import type { BotMessage, BotsSnapshot } from './contract.js'
 
 vi.mock('@dshfiles/dshx/client', async importOriginal => ({
   ...(await importOriginal<typeof import('@dshfiles/dshx/client')>()),
@@ -57,6 +57,7 @@ const snapshot: BotsSnapshot = {
     },
   ],
 }
+let messages: BotMessage[] = []
 const api = createApiClient(
   {
     get: name =>
@@ -65,7 +66,7 @@ const api = createApiClient(
             rpc: {
               call: async (_channel: string, method: string) => ({
                 ok: true,
-                value: { version: 1, output: method.endsWith('/snapshot') ? snapshot : { messages: [], hasMore: false } },
+                value: { version: 1, output: method.endsWith('/snapshot') ? snapshot : { messages, hasMore: false } },
               }),
             },
           }
@@ -75,6 +76,7 @@ const api = createApiClient(
 )
 let client: QueryClient
 beforeEach(() => {
+  messages = []
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
   vi.stubGlobal(
     'ResizeObserver',
@@ -89,6 +91,46 @@ afterEach(() => {
   cleanup()
   client.clear()
   vi.unstubAllGlobals()
+})
+
+const noticeMessage = (delivery: BotMessage['delivery']): BotMessage => ({
+  id: 'synthetic-message',
+  botId: 'synthetic-bot',
+  conversationId: 'synthetic-room',
+  remoteId: null,
+  requestId: delivery === 'received' ? null : '00000000-0000-4000-8000-000000000001',
+  author: delivery === 'received' ? 'bot' : 'user',
+  text: 'Synthetic message',
+  notice: 'Synthetic visible notice',
+  nativeUrl: null,
+  createdAt: 0,
+  updatedAt: 0,
+  delivery,
+})
+
+it.each(['failed', 'uncertain'] as const)('does not describe %s delivery as unsupported provider content', async delivery => {
+  messages = [noticeMessage(delivery)]
+  render(
+    <PluginQueryProvider client={client}>
+      <BotsPanel />
+    </PluginQueryProvider>,
+  )
+  fireEvent.click(await screen.findByRole('button', { name: /Synthetic assistant/ }))
+  expect(await screen.findByText('Synthetic visible notice')).toBeTruthy()
+  expect(screen.queryByText('View unsupported content in the original app; no safe link was supplied.')).toBeNull()
+  expect(screen.getByRole('button', { name: 'Retry original send' })).toBeTruthy()
+})
+
+it('retains the original-app fallback for a received unsupported-content notice', async () => {
+  messages = [noticeMessage('received')]
+  render(
+    <PluginQueryProvider client={client}>
+      <BotsPanel />
+    </PluginQueryProvider>,
+  )
+  fireEvent.click(await screen.findByRole('button', { name: /Synthetic assistant/ }))
+  expect(await screen.findByText('Synthetic visible notice')).toBeTruthy()
+  expect(screen.getByText('View unsupported content in the original app; no safe link was supplied.')).toBeTruthy()
 })
 
 it('bounds the independently scrollable connection header while retaining consent and a separate conversation', async () => {

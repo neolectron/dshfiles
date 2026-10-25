@@ -109,7 +109,7 @@ const Message = (props: {
           <div className="dshx:space-y-2 dshx:rounded-lg dshx:bg-muted dshx:p-3">
             <p className="dshx:whitespace-pre-wrap dshx:break-words dshx:text-muted-foreground">{message.notice}</p>
             <NativeLink url={message.nativeUrl} />
-            {BotsUiModel.nativeBotUrl(message.nativeUrl) === null && (
+            {!failed && BotsUiModel.nativeBotUrl(message.nativeUrl) === null && (
               <p className="dshx:text-xs dshx:text-muted-foreground">View unsupported content in the original app; no safe link was supplied.</p>
             )}
           </div>
