@@ -65,11 +65,14 @@ export const authInputRequestSchema = z
   .strict()
 export type AuthInputRequest = z.infer<typeof authInputRequestSchema>
 export const authEmptyRequestSchema = z.object({}).strict()
+/** Completion consumes the same attempt identity and monotonic sequence as input. */
+export const authCompleteRequestSchema = authInputRequestSchema.omit({ input: true }).strict()
+export type AuthCompleteRequest = z.infer<typeof authCompleteRequestSchema>
 
 export const authAttemptSnapshotSchema = z
   .object({
     id: z.string().uuid(),
-    state: z.enum(['starting', 'ready', 'denied', 'closed', 'expired', 'failed']),
+    state: z.enum(['starting', 'ready', 'denied', 'closed', 'expired', 'failed', 'completed']),
     expiresAt: z.number().int().positive(),
     width: z.number().int().min(0).max(8192),
     height: z.number().int().min(0).max(8192),
@@ -90,7 +93,20 @@ export const dotAuthRoutes = {
   frame: '/api/dshfiles/dot-auth/frame',
   input: '/api/dshfiles/dot-auth/input',
   cancel: '/api/dshfiles/dot-auth/cancel',
+  complete: '/api/dshfiles/dot-auth/complete',
 } as const
 export const dotAuthCapabilityHeader = 'X-Dot-Auth-Capability'
 /** Shared binary response ceiling; never copied into client state or RPC. */
 export const authFrameMaxBytes = 1024 * 1024
+
+export type Awaitable<T> = T | Promise<T>
+/** Private composition seam. Not an RPC credential DTO or an Agent tool. */
+export interface AuthAttemptOperations {
+  start(input: AuthStartInput): Awaitable<AuthStartResult>
+  status(capability: string): Awaitable<AuthAttemptSnapshot>
+  frame(capability: string, signal?: AbortSignal): Promise<{ bytes: Uint8Array; width: number; height: number }>
+  input(capability: string, request: AuthInputRequest, signal?: AbortSignal): Promise<AuthAttemptSnapshot>
+  cancel(capability: string): Promise<AuthAttemptSnapshot>
+  complete(capability: string, request: AuthCompleteRequest, signal?: AbortSignal): Promise<AuthAttemptSnapshot>
+  close(): Promise<void>
+}

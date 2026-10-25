@@ -154,6 +154,33 @@
           "testName": "registers through the real Cordis Host lifecycle and unregisters on disposal without credentials"
         }
       ]
+    },
+    {
+      "id": "human-browser-session",
+      "title": "Human-only Dot connection page",
+      "summary": "A consent-gated raster page in DSH completes a private browser viewing lease; the Node-owned network context remains available for a separate Bots account connection. No sign-in success is inferred from browser readiness.",
+      "reach": ["click button \"Dot connection\"", "expect heading \"Connect Dot in a fresh browser\""],
+      "surfaces": ["client", "host"],
+      "configuration": [],
+      "states": ["consent", "starting", "active", "completing", "completed", "failed", "closed", "expired"],
+      "failureModes": [
+        "Provider denial is not bypassed; completion requires explicit human action and browser admission.",
+        "Completion clears frames and input immediately; abort, failure and late callbacks cannot revive the controller."
+      ],
+      "externalDependencies": [
+        {
+          "id": "Chromium on the standalone Node service",
+          "boundary": "Private human-only viewing lease and retained same-context network session. No cookie export or general browsing tools.",
+          "deterministicFake": "A real isolated Chromium visits only a synthetic loopback page and fixed local Dot wire responses in tooling/dshx/e2e/fixtures/dot-enrollment.mjs."
+        }
+      ],
+      "verification": [
+        {
+          "kind": "gherkin",
+          "id": "bot-openai-dot.human-browser-session",
+          "featureFile": "tooling/dshx/e2e/features/dot-enrollment.feature"
+        }
+      ]
     }
   ]
 }

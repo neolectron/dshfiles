@@ -8,6 +8,7 @@
     "dist",
     "src",
     "tests",
+    "docs",
     "dshx.config.ts",
     "tsconfig.json",
     "cordis.patch.yml",
@@ -23,6 +24,7 @@
     ".": "./dist/index.js",
     "./package.json": "./package.json",
     "./cordis.patch.yml": "./cordis.patch.yml",
+    "./client": "./dist/client.js",
     "./account-authority": {
       "types": "./src/account-authority.ts",
       "default": "./dist/account-authority.js"
@@ -30,6 +32,14 @@
     "./adapter": {
       "types": "./src/adapter.ts",
       "default": "./dist/adapter.js"
+    },
+    "./browser-session": {
+      "types": "./src/browser-session.ts",
+      "default": "./dist/browser-session.js"
+    },
+    "./auth": {
+      "types": "./src/auth.ts",
+      "default": "./dist/auth.js"
     }
   },
   "scripts": {
@@ -44,6 +54,7 @@
     "@dshfiles/credential-port": "workspace:*",
     "@dshfiles/dshx": "workspace:*",
     "@dshfiles/plugin-ui": "workspace:*",
+    "@dshfiles/shared-runtime": "workspace:*",
     "playwright-core": "1.56.1",
     "react": "catalog:",
     "zod": "catalog:"
@@ -52,6 +63,11 @@
     "@deepseek-ai/cordis": "catalog:",
     "@deepseek-ai/dsh": "0.2.1-rc.2",
     "@deepseek-ai/dsh-client-connection": "catalog:",
+    "@deepseek-ai/dsh-client-ui-layout": "catalog:",
+    "@deepseek-ai/dsh-client-ui-primitives": "catalog:",
+    "@deepseek-ai/dsh-client-ui-renderer": "catalog:",
+    "@deepseek-ai/dsh-client-ui-sidebar": "catalog:",
+    "@deepseek-ai/dsh-client-ui-slots": "catalog:",
     "@deepseek-ai/dsh-credentials-local": "catalog:",
     "@deepseek-ai/dsh-host-webserver": "catalog:",
     "@deepseek-ai/dsh-launch-environment": "catalog:",
@@ -70,6 +86,12 @@
   "peerDependencies": {
     "@deepseek-ai/cordis": "~4.0.4",
     "@deepseek-ai/dsh": ">=0.2.1-rc.2 <0.3.0-0",
+    "@deepseek-ai/dsh-client-connection": ">=0.2.1-rc.2 <0.3.0-0",
+    "@deepseek-ai/dsh-client-ui-layout": ">=0.2.1-rc.2 <0.3.0-0",
+    "@deepseek-ai/dsh-client-ui-primitives": ">=0.2.1-rc.2 <0.3.0-0",
+    "@deepseek-ai/dsh-client-ui-renderer": ">=0.2.1-rc.2 <0.3.0-0",
+    "@deepseek-ai/dsh-client-ui-sidebar": ">=0.2.1-rc.2 <0.3.0-0",
+    "@deepseek-ai/dsh-client-ui-slots": ">=0.2.1-rc.2 <0.3.0-0",
     "@deepseek-ai/dsh-host-webserver": ">=0.2.1-rc.2 <0.3.0-0",
     "@deepseek-ai/dsh-tools": ">=0.2.1-rc.2 <0.3.0-0",
     "@dshfiles/ai-accounts": ">=0.1.0 <0.2.0",
@@ -89,6 +111,21 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-primitives",
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-sidebar",
+        "@deepseek-ai/dsh-client-ui-slots"
+      ],
+      "external": [
+        "@dshfiles/shared-runtime"
+      ],
+      "immediately": false
     }
   },
   "dshx": {

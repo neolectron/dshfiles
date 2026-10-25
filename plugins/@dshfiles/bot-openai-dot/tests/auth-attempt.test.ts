@@ -25,8 +25,10 @@ const managers: AuthAttemptManager[] = []
 interface FixtureManagerOptions {
   open: (signal: AbortSignal) => Promise<BrowserPort>
   ttlMs?: number
+  onComplete?: (signal: AbortSignal) => Promise<void>
+  completeTimeoutMs?: number
 }
-function fixture(options: { ttlMs?: number; port?: BrowserPort; open?: (signal: AbortSignal) => Promise<BrowserPort> } = {}) {
+function fixture(options: Partial<FixtureManagerOptions> & { port?: BrowserPort } = {}) {
   const port = options.port ?? {
     frame: vi.fn(async () => ({ bytes: jpeg, width: 640, height: 480 })),
     input: vi.fn(async () => {}),
@@ -35,6 +37,8 @@ function fixture(options: { ttlMs?: number; port?: BrowserPort; open?: (signal: 
   const open = options.open ?? vi.fn(async () => port)
   const managerOptions: FixtureManagerOptions = { open }
   if (options.ttlMs !== undefined) managerOptions.ttlMs = options.ttlMs
+  if (options.onComplete) managerOptions.onComplete = options.onComplete
+  if (options.completeTimeoutMs !== undefined) managerOptions.completeTimeoutMs = options.completeTimeoutMs
   const manager = new AuthAttemptManager(managerOptions)
   managers.push(manager)
   return { manager, port, open }
@@ -311,4 +315,185 @@ describe('closed native input schema', () => {
       expect(authInputSchema.safeParse(input).success).toBe(true)
     }
   })
+})
+
+describe('manual browser-session completion ownership', () => {
+  it('promotes through the owner callback, releases only the viewer lease and revokes capability atomically', async () => {
+    let promoted = false,
+      networkAlive = true
+    const close = vi.fn(async () => {
+      if (!promoted) networkAlive = false
+    })
+    const onComplete = vi.fn(async (signal: AbortSignal) => {
+      expect(signal.aborted).toBe(false)
+      promoted = true
+    })
+    const { manager } = fixture({ onComplete, port: { frame: async () => ({ bytes: jpeg, width: 1, height: 1 }), input: async () => {}, close } })
+    const start = manager.start({ acceptRisks: true })
+    await settle()
+    const receipt = await manager.complete(start.capability, { attemptId: start.attempt.id, sequence: 1 })
+    expect(receipt).toMatchObject({ id: start.attempt.id, state: 'completed' })
+    expect(JSON.stringify(receipt)).not.toContain(start.capability)
+    expect(close).toHaveBeenCalledTimes(1)
+    expect(onComplete).toHaveBeenCalledTimes(1)
+    expect(onComplete.mock.calls[0]?.[0].aborted).toBe(true)
+    expect(networkAlive).toBe(true)
+    expect(() => manager.status(start.capability)).toThrow()
+    await expect(manager.frame(start.capability)).rejects.toMatchObject({ code: 'forbidden' })
+    await expect(manager.complete(start.capability, { attemptId: start.attempt.id, sequence: 2 })).rejects.toMatchObject({ code: 'forbidden' })
+    await manager.close()
+    expect(close).toHaveBeenCalledTimes(1)
+  })
+
+  it('requires a ready attempt, exact identity, closed payload and monotonic shared input sequence', async () => {
+    const opening = deferred<BrowserPort>()
+    const onComplete = vi.fn(async () => {})
+    const { manager, port } = fixture({ open: () => opening.promise, onComplete })
+    const start = manager.start({ acceptRisks: true }),
+      request = { attemptId: start.attempt.id, sequence: 2 }
+    await expect(manager.complete(start.capability, request)).rejects.toMatchObject({ code: 'not-ready' })
+    opening.resolve(port)
+    await settle()
+    await expect(manager.complete('forged', request)).rejects.toMatchObject({ code: 'forbidden' })
+    await expect(manager.complete(start.capability, { ...request, attemptId: '00000000-0000-4000-8000-000000000000' })).rejects.toMatchObject({ code: 'stale' })
+    await expect(manager.complete(start.capability, { ...request, sequence: 0 })).rejects.toMatchObject({ code: 'invalid-request' })
+    const extra = { ...request, credential: canary }
+    await expect(manager.complete(start.capability, extra)).rejects.toMatchObject({ code: 'invalid-request' })
+    await manager.input(start.capability, { ...request, input: text })
+    await expect(manager.complete(start.capability, request)).rejects.toMatchObject({ code: 'stale' })
+    expect(onComplete).not.toHaveBeenCalled()
+    await expect(manager.complete(start.capability, { ...request, sequence: 3 })).resolves.toMatchObject({ state: 'completed' })
+    const unsupported = fixture().manager,
+      old = unsupported.start({ acceptRisks: true })
+    await settle()
+    await expect(unsupported.complete(old.capability, { attemptId: old.attempt.id, sequence: 1 })).rejects.toMatchObject({ code: 'not-ready' })
+    expect(unsupported.status(old.capability).state).toBe('ready')
+  })
+
+  it('excludes concurrent frame/input/complete without retrying an owner callback', async () => {
+    const capture = deferred<{ bytes: Uint8Array; width: number; height: number }>(),
+      input = deferred<void>(),
+      completion = deferred<void>()
+    const onComplete = vi.fn(() => completion.promise)
+    const { manager } = fixture({ onComplete, port: { frame: () => capture.promise, input: () => input.promise, close: async () => {} } })
+    const start = manager.start({ acceptRisks: true }),
+      request = { attemptId: start.attempt.id, sequence: 1 }
+    await settle()
+    const frame = manager.frame(start.capability)
+    await expect(manager.complete(start.capability, request)).rejects.toMatchObject({ code: 'busy' })
+    capture.resolve({ bytes: jpeg, width: 1, height: 1 })
+    await frame
+    const typing = manager.input(start.capability, { ...request, input: text })
+    await expect(manager.complete(start.capability, { ...request, sequence: 2 })).rejects.toMatchObject({ code: 'busy' })
+    input.resolve()
+    await typing
+    const done = manager.complete(start.capability, { ...request, sequence: 2 })
+    await expect(manager.frame(start.capability)).rejects.toMatchObject({ code: 'busy' })
+    await expect(manager.input(start.capability, { ...request, sequence: 3, input: text })).rejects.toMatchObject({ code: 'busy' })
+    await expect(manager.complete(start.capability, { ...request, sequence: 3 })).rejects.toMatchObject({ code: 'busy' })
+    completion.resolve()
+    await done
+    expect(onComplete).toHaveBeenCalledTimes(1)
+  })
+
+  it.each(['cancel', 'ttl', 'abort', 'timeout'] as const)('fences %s and a callback that resolves after retirement', async kind => {
+    vi.useFakeTimers()
+    const completion = deferred<void>(),
+      onComplete = vi.fn((_signal: AbortSignal) => completion.promise)
+    const { manager, port } = fixture({ onComplete, ttlMs: kind === 'ttl' ? 50 : 1000, completeTimeoutMs: 100 })
+    const start = manager.start({ acceptRisks: true }),
+      abort = new AbortController()
+    await settle()
+    const pending = manager.complete(start.capability, { attemptId: start.attempt.id, sequence: 1 }, abort.signal)
+    const refusal = expect(pending).rejects.toMatchObject({ code: 'failed', message: 'Dot authentication operation refused.' })
+    await settle()
+    let cancelled: Promise<unknown> | undefined
+    if (kind === 'cancel') cancelled = manager.cancel(start.capability)
+    if (kind === 'ttl') vi.advanceTimersByTime(1000)
+    if (kind === 'timeout') vi.advanceTimersByTime(100)
+    if (kind === 'abort') abort.abort()
+    await refusal
+    await settle()
+    expect(onComplete.mock.calls[0]?.[0].aborted).toBe(true)
+    expect(() => manager.status(start.capability)).toThrow()
+    expect(port.close).toHaveBeenCalledTimes(1)
+    expect(() => manager.start({ acceptRisks: true })).toThrow()
+    completion.resolve()
+    await cancelled
+    await settle()
+    const fresh = manager.start({ acceptRisks: true })
+    expect(fresh.attempt.id).not.toBe(start.attempt.id)
+    expect(onComplete).toHaveBeenCalledTimes(1)
+    expect(() => manager.status(start.capability)).toThrow()
+  })
+
+  it('sanitizes completion failure, safely releases unpromoted browser and never reports completed', async () => {
+    const onComplete = vi.fn(async () => {
+      throw new Error(canary)
+    })
+    const { manager, port } = fixture({ onComplete })
+    const start = manager.start({ acceptRisks: true })
+    await settle()
+    await expect(manager.complete(start.capability, { attemptId: start.attempt.id, sequence: 1 })).rejects.toMatchObject({
+      code: 'failed',
+      message: 'Dot authentication operation refused.',
+    })
+    await settle()
+    expect(port.close).toHaveBeenCalledTimes(1)
+    expect(onComplete).toHaveBeenCalledTimes(1)
+    expect(() => manager.status(start.capability)).toThrow()
+  })
+
+  it('bounds promoted lease cleanup and never acknowledges an unconfirmed close', async () => {
+    vi.useFakeTimers()
+    const closing = deferred<void>()
+    const { manager } = fixture({
+      completeTimeoutMs: 100,
+      onComplete: async () => {},
+      port: { frame: async () => ({ bytes: jpeg, width: 1, height: 1 }), input: async () => {}, close: () => closing.promise },
+    })
+    const start = manager.start({ acceptRisks: true })
+    await settle()
+    const pending = manager.complete(start.capability, { attemptId: start.attempt.id, sequence: 1 })
+    const refusal = expect(pending).rejects.toMatchObject({ code: 'failed' })
+    await settle()
+    vi.advanceTimersByTime(100)
+    await refusal
+    expect(() => manager.status(start.capability)).toThrow()
+    expect(() => manager.start({ acceptRisks: true })).toThrow()
+    closing.resolve()
+    await settle()
+  })
+})
+
+it('never starts the completion callback after immediate cancellation and refuses a failed viewer release', async () => {
+  const onComplete = vi.fn(async (_signal: AbortSignal) => {})
+  const { manager } = fixture({ onComplete })
+  const start = manager.start({ acceptRisks: true })
+  await settle()
+  const pending = manager.complete(start.capability, { attemptId: start.attempt.id, sequence: 1 })
+  const refused = expect(pending).rejects.toMatchObject({ code: 'failed' })
+  await manager.cancel(start.capability)
+  await refused
+  expect(onComplete).not.toHaveBeenCalled()
+  expect(() => manager.status(start.capability)).toThrow()
+
+  const broken = fixture({
+    onComplete,
+    port: {
+      frame: async () => ({ bytes: jpeg, width: 1, height: 1 }),
+      input: async () => {},
+      close: async () => {
+        throw new Error(canary)
+      },
+    },
+  }).manager
+  const other = broken.start({ acceptRisks: true })
+  await settle()
+  await expect(broken.complete(other.capability, { attemptId: other.attempt.id, sequence: 1 })).rejects.toMatchObject({
+    code: 'failed',
+    message: 'Dot authentication operation refused.',
+  })
+  expect(() => broken.status(other.capability)).toThrow()
+  expect(() => broken.start({ acceptRisks: true })).toThrow()
 })

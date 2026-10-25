@@ -3,6 +3,7 @@ import { JsonText } from '@dshfiles/dshx/api'
 import type { ZodType } from 'zod'
 import {
   authAttemptSnapshotSchema,
+  authCompleteRequestSchema,
   authStartResultSchema,
   authStartSchema,
   authInputRequestSchema,
@@ -11,7 +12,7 @@ import {
   dotAuthCapabilityHeader,
   dotAuthRoutes,
 } from './auth-protocol.js'
-import type { AuthAttemptSnapshot, AuthInputRequest, AuthStartInput, AuthStartResult } from './auth-protocol.js'
+import type { AuthAttemptSnapshot, AuthCompleteRequest, AuthInputRequest, AuthStartInput, AuthStartResult } from './auth-protocol.js'
 
 /** Human-view-only port. Implementations must not expose it as an Agent tool or retain input/frames. */
 export interface AuthViewerTransport {
@@ -19,12 +20,13 @@ export interface AuthViewerTransport {
   frame(id: string, capability: string, signal: AbortSignal): Promise<{ bytes: Uint8Array; width: number; height: number }>
   input(id: string, capability: string, request: AuthInputRequest, signal: AbortSignal): Promise<void>
   status(id: string, capability: string, signal: AbortSignal): Promise<AuthAttemptSnapshot>
+  complete(id: string, capability: string, request: AuthCompleteRequest, signal: AbortSignal): Promise<AuthAttemptSnapshot>
   cancel(id: string, capability: string, signal: AbortSignal): Promise<AuthAttemptSnapshot>
 }
 
 /** Explicit deployment facts, NOT guessed from private Host bootstrap/Connection fields.
  * Composition supplies pageOrigin from public window.location.origin and a bound
- * native window.fetch. This source-only factory is not wired into the plugin.
+ * native window.fetch. No bootstrap fields or Node origins are consulted.
  * Never substitute generic RPC: its pre-handler buffering/error echo do not meet
  * this private input channel's bounds/redaction policy.
  */
@@ -33,8 +35,10 @@ export interface AuthFetchConfiguration {
   readonly basePath: string
   readonly pageOrigin: string
   readonly fetch: typeof globalThis.fetch
+  /** Native page composition uses fixed relative routes on its own origin. */
+  readonly relativeRoutes?: boolean
 }
-type AuthWireBody = AuthStartInput | AuthInputRequest | ReturnType<typeof authEmptyRequestSchema.parse>
+type AuthWireBody = AuthCompleteRequest | AuthStartInput | AuthInputRequest | ReturnType<typeof authEmptyRequestSchema.parse>
 const JSON_LIMIT = 8192
 function refused(): Error {
   return new Error('The private browser request could not be completed.')
@@ -55,7 +59,7 @@ function checkedBase(config: AuthFetchConfiguration): string {
       throw refused()
     const path = config.basePath
     if (path.length > 512 || !/^\/(?:[A-Za-z0-9._~-]+\/)*$/u.test(path) || path.split('/').some(part => part === '.' || part === '..')) throw refused()
-    return `${origin.origin}${path.slice(0, -1)}`
+    return `${config.relativeRoutes ? '' : origin.origin}${path.slice(0, -1)}`
   } catch {
     throw refused()
   }
@@ -121,10 +125,23 @@ function jpegSize(bytes: Uint8Array) {
 export function createAuthFetchTransport(configuration: AuthFetchConfiguration): AuthViewerTransport {
   const base = checkedBase(configuration)
   const nativeFetch = configuration.fetch
-  let binding: { id: string; capability: string } | undefined
-  let starting = false
-  const authorize = (id: string, capability: string) => {
-    if (!binding || binding.id !== id || binding.capability !== capability) throw refused()
+  type Controller = { phase: 'active' | 'retiring'; id: string; capability: string }
+  let owner: Controller | { phase: 'starting' | 'uncertain-start' } | undefined
+  const authorize = (id: string, capability: string, active = false): Controller => {
+    if (
+      !owner ||
+      (owner.phase !== 'active' && owner.phase !== 'retiring') ||
+      owner.id !== id ||
+      owner.capability !== capability ||
+      (active && owner.phase !== 'active')
+    )
+      throw refused()
+    return owner
+  }
+  const acknowledge = (expected: Controller, snapshot: AuthAttemptSnapshot): AuthAttemptSnapshot => {
+    if (owner !== expected || snapshot.id !== expected.id) throw refused()
+    if (!['starting', 'ready'].includes(snapshot.state)) owner = undefined
+    return snapshot
   }
   const request = async (operation: keyof typeof dotAuthRoutes, signal: AbortSignal, body: AuthWireBody, capability?: string): Promise<Response> => {
     abortCheck(signal)
@@ -191,46 +208,73 @@ export function createAuthFetchTransport(configuration: AuthFetchConfiguration):
     start: (consent, signal) =>
       protect(async () => {
         const parsed = authStartSchema.safeParse(consent)
-        if (!parsed.success || starting || binding) throw refused()
-        starting = true
+        if (!parsed.success || owner) throw refused()
+        abortCheck(signal)
+        owner = { phase: 'starting' }
         try {
           const result = await json('start', authStartResultSchema, signal, parsed.data)
-          binding = { id: result.attempt.id, capability: result.capability }
+          owner = { phase: 'active', id: result.attempt.id, capability: result.capability }
           return result
-        } finally {
-          starting = false
+        } catch {
+          // A lost/malformed start response may have opened a browser without a known capability.
+          owner = { phase: 'uncertain-start' }
+          throw refused()
         }
       }),
     status: (id, cap, signal) =>
       protect(async () => {
-        authorize(id, cap)
-        return bound(id, await json('status', authAttemptSnapshotSchema, signal, {}, cap))
+        const expected = authorize(id, cap)
+        return acknowledge(expected, await json('status', authAttemptSnapshotSchema, signal, {}, cap))
+      }),
+    complete: (id, cap, request, signal) =>
+      protect(async () => {
+        const expected = authorize(id, cap, true)
+        const parsed = authCompleteRequestSchema.safeParse(request)
+        if (!parsed.success || parsed.data.attemptId !== id) throw refused()
+        // Immediately retire the local input capability; complete is never retried.
+        expected.phase = 'retiring'
+        const receipt = acknowledge(expected, await json('complete', authAttemptSnapshotSchema, signal, parsed.data, cap))
+        if (receipt.state !== 'completed') throw refused()
+        return receipt
       }),
     cancel: (id, cap, signal) =>
       protect(async () => {
-        authorize(id, cap)
-        try {
-          return bound(id, await json('cancel', authAttemptSnapshotSchema, signal, {}, cap))
-        } finally {
-          binding = undefined
-        }
+        const expected = authorize(id, cap)
+        expected.phase = 'retiring'
+        const receipt = acknowledge(expected, await json('cancel', authAttemptSnapshotSchema, signal, {}, cap))
+        if (receipt.state === 'starting' || receipt.state === 'ready') throw refused()
+        return receipt
       }),
     input: (id, cap, input, signal) =>
       protect(async () => {
-        authorize(id, cap)
+        const expected = authorize(id, cap, true)
         const parsed = authInputRequestSchema.safeParse(input)
         if (!parsed.success || parsed.data.attemptId !== id) throw refused()
-        bound(id, await json('input', authAttemptSnapshotSchema, signal, parsed.data, cap))
+        const receipt = bound(id, await json('input', authAttemptSnapshotSchema, signal, parsed.data, cap))
+        if (authorize(id, cap, true) !== expected) throw refused()
+        acknowledge(expected, receipt)
       }),
     frame: (id, cap, signal) =>
       protect(async () => {
-        authorize(id, cap)
+        const expected = authorize(id, cap, true)
         const response = await request('frame', signal, {}, cap)
         const bytes = await boundedBytes(response, authFrameMaxBytes, signal)
         const size = jpegSize(bytes)
         if (String(size.width) !== response.headers.get('x-dot-auth-width') || String(size.height) !== response.headers.get('x-dot-auth-height'))
           throw refused()
+        if (authorize(id, cap, true) !== expected) throw refused()
         return { bytes, ...size }
       }),
   }
+}
+
+/** Production browser adapter: fixed same-origin relative routes, no ClientBearer/bootstrap. */
+export function NativeAuthTransport(): AuthViewerTransport {
+  return createAuthFetchTransport({
+    browserOrigin: window.location.origin,
+    pageOrigin: window.location.origin,
+    basePath: '/',
+    relativeRoutes: true,
+    fetch: window.fetch.bind(window),
+  })
 }

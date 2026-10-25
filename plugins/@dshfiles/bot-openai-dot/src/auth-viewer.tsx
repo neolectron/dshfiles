@@ -58,9 +58,25 @@ const KEYS = [
   'Space',
 ] as const
 const SHIFT_KEYS = new Set<string>(['Tab', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'])
-type FlowEvent = { type: 'START' | 'READY' | 'CANCEL' | 'CLOSED' | 'DENIED' | 'EXPIRED' | 'FAILED' | 'UNCONFIRMED' | 'TEXT_REJECTED' | 'TEXT_ACCEPTED' }
+type FlowEvent = {
+  type:
+    | 'START'
+    | 'COMPLETE'
+    | 'COMPLETED'
+    | 'COMPLETE_FAILED'
+    | 'READY'
+    | 'CANCEL'
+    | 'CLOSED'
+    | 'DENIED'
+    | 'EXPIRED'
+    | 'FAILED'
+    | 'UNCONFIRMED'
+    | 'TEXT_REJECTED'
+    | 'TEXT_ACCEPTED'
+}
 interface ViewerPort {
   cancel(): void
+  complete(): void
 }
 interface InputDispatch {
   readonly id: string
@@ -76,6 +92,8 @@ interface ViewerInput {
 
 function stopEvent(state: AuthAttemptSnapshot['state']): FlowEvent {
   switch (state) {
+    case 'completed':
+      return { type: 'COMPLETED' }
     case 'closed':
       return { type: 'CLOSED' }
     case 'denied':
@@ -112,6 +130,9 @@ function openViewer(input: ViewerInput, send: (event: FlowEvent) => void): () =>
     disposed = false,
     cancelling = false,
     ready = false
+  let completing = false,
+    completed = false
+  let completeAbort: AbortController | undefined
   let timer: ReturnType<typeof setTimeout> | undefined
   let inputTimer: ReturnType<typeof setTimeout> | undefined
   let expiryTimer: ReturnType<typeof setTimeout> | undefined
@@ -120,6 +141,15 @@ function openViewer(input: ViewerInput, send: (event: FlowEvent) => void): () =>
     inputBusy = false,
     nextInputAt = 0
   let objectUrl: string | undefined, pendingImage: HTMLImageElement | undefined
+  const pending = new Set<Promise<unknown>>()
+  const track = <Value,>(work: Promise<Value>): Promise<Value> => {
+    pending.add(work)
+    void work.then(
+      () => pending.delete(work),
+      () => pending.delete(work),
+    )
+    return work
+  }
   const queue: AuthInput[] = []
   const pressed = new Set<(typeof KEYS)[number]>()
   let pointer: { x: number; y: number; button: 'left' | 'right' } | undefined
@@ -148,10 +178,10 @@ function openViewer(input: ViewerInput, send: (event: FlowEvent) => void): () =>
       canvas.height = 0
     }
   }
-  const stopLocal = () => {
+  const stopLocal = (abortPending = true) => {
     stopped = true
     ready = false
-    abort.abort()
+    if (abortPending) abort.abort()
     listeners.abort()
     clearTimeout(timer)
     clearTimeout(inputTimer)
@@ -169,7 +199,7 @@ function openViewer(input: ViewerInput, send: (event: FlowEvent) => void): () =>
     clearFrame()
   }
   const requestCancel = async () => {
-    if (cancelling || !attempt || !capability) return
+    if (cancelling || completing || completed || !attempt || !capability) return
     cancelling = true
     const cancelAbort = new AbortController()
     const deadline = setTimeout(() => cancelAbort.abort(), 3000)
@@ -189,11 +219,63 @@ function openViewer(input: ViewerInput, send: (event: FlowEvent) => void): () =>
     }
   }
   const cancel = () => {
+    completeAbort?.abort()
     stopLocal()
     if (!attempt) notify({ type: 'UNCONFIRMED' })
     void requestCancel()
   }
-  input.port.current = { cancel }
+  const complete = () => {
+    if (stopped || !ready || !attempt || !capability || completing) return
+    const id = attempt.id
+    // oxlint-disable-next-line antislop/no-passthrough-variable -- Snapshot for the one completion request before revoking the actor's mutable binding.
+    const cap = capability
+    completing = true
+    capability = undefined
+    // Remove local authority immediately, but do not revoke an active borrowed browser.
+    stopLocal(false)
+    completeAbort = new AbortController()
+    const completeSignal = completeAbort.signal
+    const deadline = setTimeout(() => completeAbort?.abort(), 20_000)
+    let removeAbort = () => {}
+    const aborted = new Promise<never>((_resolve, reject) => {
+      const refuse = () => reject(new Error('Completion stopped'))
+      completeSignal.addEventListener('abort', refuse, { once: true })
+      removeAbort = () => completeSignal.removeEventListener('abort', refuse)
+    })
+    const handoff = (async () => {
+      // A positive HTTP acknowledgment fences Node's in-flight frame/input guards.
+      // No new work can start after stopLocal; queued keys are already discarded.
+      await Promise.all([...pending])
+      if (disposed || completeSignal.aborted) throw new Error('Completion stopped')
+      abort.abort()
+      return input.transport.complete(id, cap, { attemptId: id, sequence: ++sequence }, completeSignal)
+    })()
+    void Promise.race([handoff, aborted])
+      .then(receipt => {
+        if (disposed || !completing || completeAbort?.signal.aborted) return
+        if (receipt.id !== id || receipt.state !== 'completed') throw new Error('Completion refused')
+        completed = true
+        notify({ type: 'COMPLETED' })
+      })
+      .catch(() => {
+        abort.abort()
+        // Failed or lost completion is not a terminal acknowledgment. Retain and
+        // use cleanup-only authority once; never retry input or completion.
+        const cancelAbort = new AbortController()
+        const cancelDeadline = setTimeout(() => cancelAbort.abort(), 3000)
+        void Promise.resolve()
+          .then(() => input.transport.cancel(id, cap, cancelAbort.signal))
+          .catch(() => {})
+          .finally(() => clearTimeout(cancelDeadline))
+        if (!disposed) notify({ type: 'COMPLETE_FAILED' })
+      })
+      .finally(() => {
+        clearTimeout(deadline)
+        removeAbort()
+        capability = undefined
+      })
+  }
+  input.port.current = { cancel, complete }
   const fail = () => {
     if (stopped) return
     stopLocal()
@@ -218,7 +300,7 @@ function openViewer(input: ViewerInput, send: (event: FlowEvent) => void): () =>
     }
     void Promise.resolve()
       .then(() => {
-        if (!stopped) return input.transport.input(dispatch.id, dispatch.capability, dispatch.request, abort.signal)
+        if (!stopped) return track(input.transport.input(dispatch.id, dispatch.capability, dispatch.request, abort.signal))
       })
       .then(() => {
         inputBusy = false
@@ -471,7 +553,7 @@ function openViewer(input: ViewerInput, send: (event: FlowEvent) => void): () =>
   const poll = async () => {
     if (stopped || !attempt || !capability) return
     try {
-      const snapshot = await input.transport.status(attempt.id, capability, abort.signal)
+      const snapshot = await track(input.transport.status(attempt.id, capability, abort.signal))
       if (stopped) return
       if (snapshot.id !== attempt.id || !validSnapshotSize(snapshot.width, snapshot.height)) {
         fail()
@@ -481,7 +563,7 @@ function openViewer(input: ViewerInput, send: (event: FlowEvent) => void): () =>
       if (terminal(snapshot)) return
       ready = snapshot.state === 'ready'
       if (ready && !document.hidden) {
-        const frame = await input.transport.frame(attempt.id, capability, abort.signal)
+        const frame = await track(input.transport.frame(attempt.id, capability, abort.signal))
         if (stopped) return
         await paint(frame)
         if (!stopped) {
@@ -526,6 +608,7 @@ function openViewer(input: ViewerInput, send: (event: FlowEvent) => void): () =>
     })
   return () => {
     disposed = true
+    completeAbort?.abort()
     stopLocal()
     input.port.current = null
     void requestCancel()
@@ -542,7 +625,7 @@ const viewerMachine = setup({
     events: {} as FlowEvent,
   },
   actors: { viewer: fromCallback<FlowEvent, ViewerInput>(({ input, sendBack }) => openViewer(input, sendBack)) },
-  actions: { cancel: ({ context }) => context.port.current?.cancel() },
+  actions: { cancel: ({ context }) => context.port.current?.cancel(), complete: ({ context }) => context.port.current?.complete() },
 }).createMachine({
   id: 'dot-human-auth-viewer',
   context: ({ input }) => input,
@@ -552,10 +635,18 @@ const viewerMachine = setup({
     running: {
       invoke: { src: 'viewer', input: ({ context }) => context },
       initial: 'starting',
-      states: { starting: { on: { READY: 'active' } }, active: {}, inputRejected: { on: { TEXT_ACCEPTED: 'active' } }, cancelling: {} },
+      states: {
+        starting: { on: { READY: 'active' } },
+        active: { on: { COMPLETE: { target: 'completing', actions: 'complete' } } },
+        completing: {},
+        inputRejected: { on: { TEXT_ACCEPTED: 'active', COMPLETE: { target: 'completing', actions: 'complete' } } },
+        cancelling: {},
+      },
       on: {
         TEXT_REJECTED: '.inputRejected',
         CANCEL: { target: '.cancelling', actions: 'cancel' },
+        COMPLETED: 'completed',
+        COMPLETE_FAILED: 'completeFailed',
         CLOSED: 'closed',
         DENIED: 'denied',
         EXPIRED: 'expired',
@@ -563,6 +654,8 @@ const viewerMachine = setup({
         UNCONFIRMED: 'unconfirmed',
       },
     },
+    completed: {},
+    completeFailed: {},
     closed: {},
     denied: {},
     expired: {},
@@ -582,6 +675,10 @@ export function AuthViewer({ transport }: { transport: AuthViewerTransport }) {
   const active = snapshot.matches({ running: 'active' }) || snapshot.matches({ running: 'inputRejected' })
   const consent = snapshot.matches('consent')
   const message = (() => {
+    if (snapshot.matches('completed')) return 'Browser session ready. Return to Bots and connect/reconnect selected account.'
+    if (snapshot.matches('completeFailed'))
+      return 'Session completion was not confirmed. Local viewing and input have stopped. Browser shutdown is not confirmed. No account connection is claimed.'
+    if (snapshot.matches({ running: 'completing' })) return 'Local viewing and input stopped. Preparing this browser session…'
     if (snapshot.matches('denied')) return 'The provider denied this attempt. This viewer does not bypass that decision.'
     if (snapshot.matches('expired')) return 'This attempt expired. Local viewing and input have stopped.'
     if (snapshot.matches('closed')) return 'The backend acknowledged that this attempt is closed.'
@@ -598,8 +695,9 @@ export function AuthViewer({ transport }: { transport: AuthViewerTransport }) {
     <section className="dshx-root dshx:flex dshx:min-w-0 dshx:flex-col dshx:gap-3 dshx:p-4">
       <h2 className="dshx:text-base dshx:font-semibold">Connect Dot in a fresh browser</h2>
       <p className="dshx:text-sm dshx:text-muted-foreground">
-        This opens a fresh browser on the DSH host. Your mouse, keyboard and pasted text go to that browser, not to the Agent. All connected DSH browsers share
-        the same owner authority. This is not confidential from software running as the same OS user or from malicious scripts in this page.
+        This opens a fresh browser on the DSH host. The normal browser backend is owned by Node; no separate ChatGPT tab or desktop helper is required. This
+        page is for human sign-in, not a chat replacement. Your mouse, keyboard and pasted text go to that browser, not to the Agent. All connected DSH browsers
+        share the same owner authority. This is not confidential from software running as the same OS user or from malicious scripts in this page.
       </p>
       {consent && (
         <label className="dshx:flex dshx:items-start dshx:gap-2 dshx:text-sm">
@@ -615,6 +713,8 @@ export function AuthViewer({ transport }: { transport: AuthViewerTransport }) {
       <p role="status" className="dshx:text-sm">
         {message}
       </p>
+      {snapshot.matches('completeFailed') && <p role="alert">Session completion is unconfirmed. Verify browser shutdown before starting another attempt.</p>}
+      {active && <Button onClick={() => send({ type: 'COMPLETE' })}>Use this session</Button>}
       <canvas
         ref={canvas}
         width={0}

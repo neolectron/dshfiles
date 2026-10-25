@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
 import { once } from 'node:events'
-import { mkdtemp, readFile, writeFile, chmod, lstat, realpath, rm, symlink } from 'node:fs/promises'
+import { mkdtemp, readFile, readdir, writeFile, chmod, lstat, realpath, rm, symlink } from 'node:fs/promises'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join } from 'node:path'
@@ -310,6 +310,70 @@ test('invalid authority mode and private-key configuration fail before creating 
       assert(!process.stderr().includes(root) && !process.stderr().includes(token) && !process.stderr().includes(authorityKey))
       await assert.rejects(lstat(env.BOTS_SERVICE_DATA_DIR), { code: 'ENOENT' })
     }
+  })
+})
+
+test('browser transport requires complete explicit account-authority configuration before opening storage', async () => {
+  await fixture(async ({ root, env }) => {
+    const authorityTokenFile = join(root, 'authority-token')
+    await writeFile(authorityTokenFile, 'SYNTHETIC_SEPARATE_AUTHORITY_SERVICE_KEY', { mode: 0o600 })
+    const configured = {
+      ...env,
+      BOTS_SERVICE_ADAPTERS: 'openai-dot',
+      BOTS_SERVICE_DOT_AUTHORITY_ORIGIN: 'http://127.0.0.1:1',
+      BOTS_SERVICE_DOT_AUTHORITY_TOKEN_FILE: authorityTokenFile,
+      BOTS_SERVICE_DOT_BROWSER_EXECUTABLE: '/SYNTHETIC/not-launched',
+      BOTS_SERVICE_DOT_BROWSER_PROFILE_PARENT: root,
+      BOTS_SERVICE_DOT_BROWSER_ACCOUNT_ID: 'SYNTHETIC_ACCOUNT_ONLY',
+    }
+    for (const patch of [
+      { BOTS_SERVICE_DOT_BROWSER_EXECUTABLE: undefined },
+      { BOTS_SERVICE_DOT_BROWSER_PROFILE_PARENT: undefined },
+      { BOTS_SERVICE_DOT_BROWSER_ACCOUNT_ID: undefined },
+      { BOTS_SERVICE_DOT_BROWSER_ACCOUNT_ID: '' },
+      { BOTS_SERVICE_DOT_BROWSER_EXECUTABLE: 'relative-executable' },
+      { BOTS_SERVICE_DOT_BROWSER_PROFILE_PARENT: 'relative-parent' },
+      { BOTS_SERVICE_DOT_AUTHORITY_ORIGIN: undefined },
+      { BOTS_SERVICE_DOT_AUTHORITY_TOKEN_FILE: undefined },
+      { BOTS_SERVICE_CREDENTIALS_FILE: join(root, 'must-not-read-legacy-map') },
+    ]) {
+      const process = launch({ ...configured, ...patch })
+      assert.equal((await process.exit).code, 1)
+      assert.equal(process.stdout().length, 0)
+      assert(!process.stderr().includes(root) && !process.stderr().includes(token))
+      await assert.rejects(lstat(env.BOTS_SERVICE_DATA_DIR), { code: 'ENOENT' })
+    }
+  })
+})
+
+test('browser-enabled CLI exposes only selected-account metadata without automatically starting a browser or reading the account', async () => {
+  await fixture(async ({ root, env }) => {
+    const authorityTokenFile = join(root, 'authority-token')
+    await writeFile(authorityTokenFile, 'SYNTHETIC_SEPARATE_AUTHORITY_SERVICE_KEY', { mode: 0o600 })
+    const process = launch({
+      ...env,
+      BOTS_SERVICE_ADAPTERS: 'openai-dot',
+      BOTS_SERVICE_DOT_AUTHORITY_ORIGIN: 'http://127.0.0.1:1',
+      BOTS_SERVICE_DOT_AUTHORITY_TOKEN_FILE: authorityTokenFile,
+      BOTS_SERVICE_DOT_BROWSER_EXECUTABLE: '/SYNTHETIC/not-launched',
+      BOTS_SERVICE_DOT_BROWSER_PROFILE_PARENT: root,
+      BOTS_SERVICE_DOT_BROWSER_ACCOUNT_ID: 'SYNTHETIC_ACCOUNT_ONLY',
+    })
+    try {
+      const receipt = await ready(process)
+      const response = await fetch(`${receipt.origin}/v1/snapshot`, { headers: { authorization: `Bearer ${token}` } })
+      const state = await snapshot(response)
+      assert.equal(state.adapters.length, 1)
+      assert.match(state.adapters[0].description, /Dot connection/)
+      assert.match(state.adapters[0].fields[0].help, /SYNTHETIC_ACCOUNT_ONLY/)
+      assert.equal(state.bots.length, 0)
+      assert.deepEqual((await readdir(root)).sort(), ['authority-token', 'data', 'service-token'])
+      assert(!JSON.stringify(state).includes(token) && !JSON.stringify(state).includes(root))
+      assert.equal(process.stderr().length, 0)
+    } finally {
+      assert.equal((await stop(process)).code, 0)
+    }
+    await assert.rejects(lstat(join(env.BOTS_SERVICE_DATA_DIR, '.bots-service-owner')), { code: 'ENOENT' })
   })
 })
 

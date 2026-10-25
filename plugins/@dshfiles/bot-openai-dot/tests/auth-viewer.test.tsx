@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AuthViewer } from '../src/auth-viewer.js'
 import { AuthAttemptManager } from '../src/auth-attempt.js'
 import type { AuthAttemptSnapshot, AuthStartResult } from '../src/auth-protocol.js'
-import { createAuthFetchTransport } from '../src/auth-viewer-transport.js'
+import { createAuthFetchTransport, NativeAuthTransport } from '../src/auth-viewer-transport.js'
 import type { AuthViewerTransport } from '../src/auth-viewer-transport.js'
 
 const ID = 'a07e3e20-55a0-4400-b048-49668a1bd1ad'
@@ -27,6 +27,7 @@ function fixture(): AuthViewerTransport {
     input: vi.fn(async () => undefined),
     status: vi.fn(async () => snapshot()),
     cancel: vi.fn(async () => snapshot('closed')),
+    complete: vi.fn(async () => snapshot('completed')),
   }
 }
 function deferred<T>() {
@@ -390,6 +391,7 @@ describe('human-only Dot raster fixture', () => {
         await manager.input(cap, request, signal)
       },
       cancel: async (_id, cap) => manager.cancel(cap),
+      complete: async (_id, cap, request, signal) => manager.complete(cap, request, signal),
     }
     await mount(transport)
     await start()
@@ -614,4 +616,289 @@ describe('human-only Dot raster fixture', () => {
     expect(drawImage).not.toHaveBeenCalled()
     expect(element('canvas').width).toBe(0)
   })
+})
+
+describe('explicit human session handoff', () => {
+  it('clears the raster, keyboard and queued input immediately, completes once and does not cancel a promoted session', async () => {
+    const transport = fixture(),
+      receipt = deferred<AuthAttemptSnapshot>(),
+      typing = deferred<void>()
+    transport.complete = vi.fn(() => receipt.promise)
+    transport.input = vi.fn(() => typing.promise)
+    await mount(transport)
+    await start()
+    expect(host.textContent).toContain('no separate ChatGPT tab or desktop helper')
+    const canvas = placeCanvas(),
+      keyboard = element('textarea')
+    await human(canvas, new MouseEvent('pointerdown', { clientX: 200, clientY: 200 }))
+    await human(canvas, new MouseEvent('pointerup', { clientX: 200, clientY: 200 }))
+    keyboard.value = 'fixture-not-retained'
+    const inputSignal = vi.mocked(transport.input).mock.calls[0]?.[3]
+    await click('Use this session')
+    expect(inputSignal?.aborted).toBe(false)
+    expect(canvas.width).toBe(0)
+    expect(keyboard.value).toBe('')
+    expect(keyboard.disabled).toBe(true)
+    expect(transport.complete).not.toHaveBeenCalled()
+    expect(host.textContent).toContain('Preparing this browser session')
+    await act(async () => typing.resolve())
+    expect(inputSignal?.aborted).toBe(true)
+    expect(transport.complete).toHaveBeenCalledWith(ID, CAP, { attemptId: ID, sequence: 2 }, expect.any(AbortSignal))
+    await advance(1000)
+    expect(transport.input).toHaveBeenCalledTimes(1)
+    expect(transport.frame).toHaveBeenCalledTimes(1)
+    await act(async () => receipt.resolve(snapshot('completed')))
+    expect(host.textContent).toContain('Browser session ready. Return to Bots and connect/reconnect selected account.')
+    expect(host.textContent).not.toContain('account connected')
+    expect(transport.complete).toHaveBeenCalledTimes(1)
+    expect(transport.cancel).not.toHaveBeenCalled()
+    await act(async () => root.unmount())
+    expect(transport.cancel).not.toHaveBeenCalled()
+  })
+
+  it('discards a late raster after completion starts and never reactivates input', async () => {
+    const transport = fixture(),
+      pending = deferred<ReturnType<typeof frame>>()
+    await mount(transport)
+    await start()
+    transport.frame = vi.fn(() => pending.promise)
+    await advance(500)
+    const signal = vi.mocked(transport.frame).mock.calls[0]?.[2]
+    await click('Use this session')
+    expect(signal?.aborted).toBe(false)
+    expect(transport.complete).not.toHaveBeenCalled()
+    await act(async () => pending.resolve(frame()))
+    expect(signal?.aborted).toBe(true)
+    await advance(1000)
+    expect(drawImage).toHaveBeenCalledTimes(1)
+    expect(element('canvas').width).toBe(0)
+    expect(element('textarea').disabled).toBe(true)
+    expect(transport.frame).toHaveBeenCalledTimes(1)
+  })
+
+  it.each(['reject', 'wrong-state', 'wrong-id', 'timeout'] as const)('fails completion safely on %s without retries or stale input', async kind => {
+    const transport = fixture(),
+      pending = deferred<AuthAttemptSnapshot>()
+    transport.complete = vi.fn(async () => {
+      if (kind === 'reject') throw new Error('fixture-sensitive-completion-error')
+      if (kind === 'timeout') return pending.promise
+      const receipt = snapshot(kind === 'wrong-state' ? 'ready' : 'completed')
+      if (kind === 'wrong-id') receipt.id = 'other-attempt'
+      return receipt
+    })
+    await mount(transport)
+    await start()
+    await click('Use this session')
+    if (kind === 'timeout') await advance(20_000)
+    expect(host.querySelector('[role="alert"]')?.textContent).toContain('Session completion is unconfirmed')
+    expect(host.textContent).toContain('No account connection is claimed')
+    expect(host.innerHTML).not.toContain('fixture-sensitive-completion-error')
+    expect(element('canvas').width).toBe(0)
+    expect(element('textarea').disabled).toBe(true)
+    await act(async () => pending.resolve(snapshot('completed')))
+    await advance(1000)
+    expect(host.textContent).not.toContain('Browser session ready.')
+    expect(transport.complete).toHaveBeenCalledTimes(1)
+    expect(transport.input).not.toHaveBeenCalled()
+  })
+
+  it('aborts completion on page departure and ignores a late success', async () => {
+    const transport = fixture(),
+      pending = deferred<AuthAttemptSnapshot>()
+    transport.complete = vi.fn(() => pending.promise)
+    await mount(transport)
+    await start()
+    await click('Use this session')
+    const signal = vi.mocked(transport.complete).mock.calls[0]?.[3]
+    await act(async () => root.unmount())
+    expect(signal?.aborted).toBe(true)
+    await act(async () => pending.resolve(snapshot('completed')))
+    expect(host.textContent).toBe('')
+  })
+
+  it('sends completion only to the fixed same-origin relative route and retires the private local binding before awaiting', async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => jsonResponse({ attempt: snapshot(), capability: FETCH_CAP }))
+    vi.stubGlobal('fetch', fetch)
+    const transport = NativeAuthTransport(),
+      signal = new AbortController().signal
+    await transport.start({ acceptRisks: true }, signal)
+    const pending = deferred<Response>()
+    fetch.mockImplementationOnce(() => pending.promise)
+    const completed = transport.complete(ID, FETCH_CAP, { attemptId: ID, sequence: 1 }, signal)
+    await expect(transport.frame(ID, FETCH_CAP, signal)).rejects.toThrow('private browser request')
+    expect(fetch.mock.calls.map(([url]) => url)).toEqual(['/api/dshfiles/dot-auth/start', '/api/dshfiles/dot-auth/complete'])
+    const init = fetch.mock.calls[1]?.[1]
+    expect(init?.body).toBe(JSON.stringify({ attemptId: ID, sequence: 1 }))
+    expect(new Headers(init?.headers).get('X-Dot-Auth-Capability')).toBe(FETCH_CAP)
+    expect(new Headers(init?.headers).has('Authorization')).toBe(false)
+    pending.resolve(jsonResponse(snapshot('completed')))
+    await expect(completed).resolves.toMatchObject({ state: 'completed' })
+    await expect(transport.complete(ID, FETCH_CAP, { attemptId: ID, sequence: 2 }, signal)).rejects.toThrow('private browser request')
+    expect(fetch).toHaveBeenCalledTimes(2)
+  })
+})
+
+it('quiesces an acknowledged frame before one complete instead of aborting and revoking the browser', async () => {
+  const transport = fixture(),
+    pending = deferred<ReturnType<typeof frame>>()
+  let borrowedBrowserClosed = false,
+    frameAcknowledged = false
+  await mount(transport)
+  await start()
+  transport.frame = vi.fn(async (_id, _cap, signal) => {
+    const revoke = () => {
+      if (!frameAcknowledged) borrowedBrowserClosed = true
+    }
+    signal.addEventListener('abort', revoke, { once: true })
+    try {
+      const result = await pending.promise
+      frameAcknowledged = true
+      return result
+    } finally {
+      signal.removeEventListener('abort', revoke)
+    }
+  })
+  transport.complete = vi.fn(async () => {
+    if (borrowedBrowserClosed || !frameAcknowledged) throw new Error('Synthetic borrow revoked before promotion')
+    return snapshot('completed')
+  })
+  await advance(500)
+  await click('Use this session')
+  expect(element('canvas').width).toBe(0)
+  expect(element('textarea').disabled).toBe(true)
+  expect(borrowedBrowserClosed).toBe(false)
+  expect(transport.complete).not.toHaveBeenCalled()
+  await act(async () => pending.resolve(frame()))
+  expect(transport.complete).toHaveBeenCalledTimes(1)
+  expect(host.textContent).toContain('Browser session ready.')
+  expect(borrowedBrowserClosed).toBe(false)
+})
+
+it.each(['deadline', 'departure', 'cancel'] as const)('never dispatches late complete after %s while waiting for private work to quiesce', async kind => {
+  const transport = fixture(),
+    pending = deferred<ReturnType<typeof frame>>()
+  await mount(transport)
+  await start()
+  transport.frame = vi.fn(() => pending.promise)
+  await advance(500)
+  const signal = vi.mocked(transport.frame).mock.calls[0]?.[2]
+  await click('Use this session')
+  expect(signal?.aborted).toBe(false)
+  expect(transport.complete).not.toHaveBeenCalled()
+  if (kind === 'deadline') await advance(20_000)
+  if (kind === 'departure') await act(async () => root.unmount())
+  if (kind === 'cancel') await click('Cancel browser')
+  expect(signal?.aborted).toBe(true)
+  await act(async () => pending.resolve(frame()))
+  await advance(1000)
+  expect(transport.complete).not.toHaveBeenCalled()
+  expect(transport.cancel).toHaveBeenCalledTimes(1)
+})
+
+it('waits for an outstanding status acknowledgment before completing once', async () => {
+  const transport = fixture(),
+    pending = deferred<AuthAttemptSnapshot>()
+  await mount(transport)
+  await start()
+  transport.status = vi.fn(() => pending.promise)
+  await advance(500)
+  await click('Use this session')
+  expect(transport.complete).not.toHaveBeenCalled()
+  expect(element('canvas').width).toBe(0)
+  await act(async () => pending.resolve(snapshot()))
+  expect(transport.complete).toHaveBeenCalledTimes(1)
+  expect(host.textContent).toContain('Browser session ready.')
+})
+
+it.each(['non-ok', 'malformed', 'lost'] as const)('retains cleanup-only authority after %s completion without reactivating input', async kind => {
+  const { fetch, transport, signal } = await begun()
+  if (kind === 'non-ok') fetch.mockResolvedValueOnce(new Response('{}', { status: 409, headers: { 'Content-Type': 'application/json' } }))
+  if (kind === 'malformed') fetch.mockResolvedValueOnce(jsonResponse({ ...snapshot('completed'), raw: 'synthetic-private-error' }))
+  if (kind === 'lost') fetch.mockRejectedValueOnce(new Error('synthetic-lost-response'))
+  await expect(transport.complete(ID, FETCH_CAP, { attemptId: ID, sequence: 1 }, signal)).rejects.toThrow('private browser request')
+  fetch.mockResolvedValueOnce(jsonResponse(snapshot()))
+  await expect(transport.status(ID, FETCH_CAP, signal)).resolves.toMatchObject({ state: 'ready' })
+  const before = fetch.mock.calls.length
+  await expect(transport.frame(ID, FETCH_CAP, signal)).rejects.toThrow('private browser request')
+  await expect(transport.input(ID, FETCH_CAP, { attemptId: ID, sequence: 2, input: { kind: 'text', text: 'never-sent' } }, signal)).rejects.toThrow(
+    'private browser request',
+  )
+  await expect(transport.complete(ID, FETCH_CAP, { attemptId: ID, sequence: 2 }, signal)).rejects.toThrow('private browser request')
+  await expect(transport.start({ acceptRisks: true }, signal)).rejects.toThrow('private browser request')
+  expect(fetch).toHaveBeenCalledTimes(before)
+  fetch.mockResolvedValueOnce(jsonResponse(snapshot('closed')))
+  await expect(transport.cancel(ID, FETCH_CAP, signal)).resolves.toMatchObject({ state: 'closed' })
+  expect(new Headers(fetch.mock.calls.at(-1)?.[1]?.headers).get('X-Dot-Auth-Capability')).toBe(FETCH_CAP)
+})
+
+it('attempts one private cleanup cancel after an uncertain dispatched completion and never claims browser shutdown', async () => {
+  const transport = fixture()
+  transport.complete = vi.fn(async () => {
+    throw new Error('synthetic-completion-response-lost')
+  })
+  transport.cancel = vi.fn(async () => {
+    throw new Error('synthetic-cleanup-refused')
+  })
+  await mount(transport)
+  await start()
+  await click('Use this session')
+  expect(transport.cancel).toHaveBeenCalledTimes(1)
+  expect(host.textContent).toContain('Browser shutdown is not confirmed')
+  expect(host.textContent).not.toContain('Browser session ready.')
+  expect(element('canvas').width).toBe(0)
+  expect(element('textarea').disabled).toBe(true)
+})
+
+it('keeps a refused cancellation retiring until a same-attempt terminal ACK', async () => {
+  const { fetch, transport, signal } = await begun()
+  fetch.mockResolvedValueOnce(jsonResponse(snapshot()))
+  await expect(transport.cancel(ID, FETCH_CAP, signal)).rejects.toThrow('private browser request')
+  const count = fetch.mock.calls.length
+  await expect(transport.frame(ID, FETCH_CAP, signal)).rejects.toThrow('private browser request')
+  await expect(transport.start({ acceptRisks: true }, signal)).rejects.toThrow('private browser request')
+  expect(fetch).toHaveBeenCalledTimes(count)
+  fetch.mockResolvedValueOnce(jsonResponse(snapshot('closed')))
+  await expect(transport.status(ID, FETCH_CAP, signal)).resolves.toMatchObject({ state: 'closed' })
+  await expect(transport.start({ acceptRisks: true }, signal)).resolves.toMatchObject({ capability: FETCH_CAP })
+})
+
+it('blocks a fresh start after an unknown start response and renders shutdown uncertainty', async () => {
+  const { fetch, transport, signal } = fetchFixture()
+  fetch.mockRejectedValueOnce(new Error('synthetic-lost-start'))
+  await expect(transport.start({ acceptRisks: true }, signal)).rejects.toThrow('private browser request')
+  await expect(transport.start({ acceptRisks: true }, signal)).rejects.toThrow('private browser request')
+  expect(fetch).toHaveBeenCalledTimes(1)
+  await mount(transport)
+  await start()
+  expect(host.textContent).toContain('Browser shutdown is not confirmed')
+  expect(host.textContent).not.toContain('backend acknowledged')
+})
+
+it('never publishes a late frame once its grant is retiring even if status still says ready', async () => {
+  const { fetch, transport, signal } = await begun(),
+    pending = deferred<Response>()
+  fetch.mockImplementationOnce(() => pending.promise)
+  const frameResult = transport.frame(ID, FETCH_CAP, signal)
+  const refused = expect(frameResult).rejects.toThrow('private browser request')
+  fetch.mockResolvedValueOnce(new Response('{}', { status: 409, headers: { 'Content-Type': 'application/json' } }))
+  await expect(transport.complete(ID, FETCH_CAP, { attemptId: ID, sequence: 1 }, signal)).rejects.toThrow('private browser request')
+  pending.resolve(new Response(jpeg(), { headers: { 'Content-Type': 'image/jpeg', 'X-Dot-Auth-Width': '800', 'X-Dot-Auth-Height': '400' } }))
+  await refused
+  fetch.mockResolvedValueOnce(jsonResponse(snapshot('closed')))
+  await transport.cancel(ID, FETCH_CAP, signal)
+})
+
+it.each(['non-ok', 'malformed', 'lost'] as const)('retains the same cleanup grant after %s cancellation without silently reopening', async kind => {
+  const { fetch, transport, signal } = await begun()
+  if (kind === 'non-ok') fetch.mockResolvedValueOnce(new Response('{}', { status: 409, headers: { 'Content-Type': 'application/json' } }))
+  if (kind === 'malformed') fetch.mockResolvedValueOnce(jsonResponse({ ...snapshot('closed'), raw: 'synthetic-private-error' }))
+  if (kind === 'lost') fetch.mockRejectedValueOnce(new Error('synthetic-lost-cancel'))
+  await expect(transport.cancel(ID, FETCH_CAP, signal)).rejects.toThrow('private browser request')
+  const before = fetch.mock.calls.length
+  await expect(transport.start({ acceptRisks: true }, signal)).rejects.toThrow('private browser request')
+  await expect(transport.frame(ID, FETCH_CAP, signal)).rejects.toThrow('private browser request')
+  expect(fetch).toHaveBeenCalledTimes(before)
+  fetch.mockResolvedValueOnce(jsonResponse(snapshot('closed')))
+  await expect(transport.cancel(ID, FETCH_CAP, signal)).resolves.toMatchObject({ state: 'closed' })
+  expect(new Headers(fetch.mock.calls.at(-1)?.[1]?.headers).get('X-Dot-Auth-Capability')).toBe(FETCH_CAP)
 })

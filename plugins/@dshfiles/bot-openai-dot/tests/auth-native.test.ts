@@ -29,7 +29,7 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup()
 })
 
-async function fixture() {
+async function fixture(completion: 'ready' | 'fail' | undefined = undefined) {
   const root = await realpath(tmpdir())
   const home = await mkdtemp(join(root, 'dot-auth-native-'))
   const ctx = new Context()
@@ -37,7 +37,9 @@ async function fixture() {
   cleanups.push(async () => {
     let failed = false
     const steps = [
-      async () => { await disposeRoutes?.() },
+      async () => {
+        await disposeRoutes?.()
+      },
       () => ctx.fiber.dispose(),
       async () => {
         // Verify the exact owned absolute directory before recursive deletion.
@@ -47,7 +49,11 @@ async function fixture() {
       },
     ]
     for (const step of steps) {
-      try { await step() } catch { failed = true }
+      try {
+        await step()
+      } catch {
+        failed = true
+      }
     }
     // All steps run in order; no finally failure masks another or leaks raw errors.
     if (failed) throw new Error('Synthetic authentication fixture cleanup failed.')
@@ -65,20 +71,28 @@ async function fixture() {
   let opens = 0
   let inputs = 0
   let closes = 0
+  let completions = 0
   let failFrame = false
-  const manager = new AuthAttemptManager({
-    open: async () => {
-      opens++
-      return {
-        frame: async () => {
-          if (failFrame) throw new Error(canary)
-          return { bytes: jpeg, width: 640, height: 480 }
-        },
-        input: async () => { inputs++ },
-        close: async () => { closes++ },
-      }
-    },
-  })
+  const onComplete = async (signal: AbortSignal) => {
+    if (completion === 'fail' || signal.aborted) throw new Error(canary)
+    completions++
+  }
+  const open = async () => {
+    opens++
+    return {
+      frame: async () => {
+        if (failFrame) throw new Error(canary)
+        return { bytes: jpeg, width: 640, height: 480 }
+      },
+      input: async () => {
+        inputs++
+      },
+      close: async () => {
+        closes++
+      },
+    }
+  }
+  const manager = new AuthAttemptManager(completion ? { open, onComplete } : { open })
   disposeRoutes = registerDotAuthRoutes(connection, manager, { browserOrigin: origin })
   const handler = connection.createSharedFetchHandler('/api')
   function noEcho(raw: string) {
@@ -97,8 +111,13 @@ async function fixture() {
     let headers: Readonly<Record<string, string>> = {}
     let ended = false
     const response: ConnectionIndexResponse = {
-      writeHead(code, values) { status = code; headers = values ?? {}; },
-      end() { ended = true },
+      writeHead(code, values) {
+        status = code
+        headers = values ?? {}
+      },
+      end() {
+        ended = true
+      },
     }
     const request = { method: 'GET', url, headers: { host } }
     if (api) connection.authorizeConnect(request, response)
@@ -110,15 +129,18 @@ async function fixture() {
     privateValues.push(cookie, cookie.slice(cookie.indexOf('=') + 1))
     return cookie
   }
-  const send = (operation: keyof typeof dotAuthRoutes, options: {
-    cookie?: string
-    cap?: string
-    body?: string | ReadableStream<Uint8Array> | undefined
-    origin?: string | null
-    host?: string
-    peer?: PeerScope
-    headers?: Record<string, string>
-  } = {}) => {
+  const send = (
+    operation: keyof typeof dotAuthRoutes,
+    options: {
+      cookie?: string
+      cap?: string
+      body?: string | ReadableStream<Uint8Array> | undefined
+      origin?: string | null
+      host?: string
+      peer?: PeerScope
+      headers?: Record<string, string>
+    } = {},
+  ) => {
     // Native node:http presents streaming routes with a Request body, which GET
     // forbids. Every private operation therefore uses POST, JSON and CSRF Origin.
     const method = 'POST'
@@ -146,9 +168,20 @@ async function fixture() {
     return result
   }
   return {
-    connection, handler, cookie, canary, jpeg, send, start, clean, exchange, noEcho,
-    counts: () => ({ opens, inputs, closes }),
-    failFrame: () => { failFrame = true },
+    connection,
+    handler,
+    cookie,
+    canary,
+    jpeg,
+    send,
+    start,
+    clean,
+    exchange,
+    noEcho,
+    counts: () => ({ opens, inputs, closes, completions }),
+    failFrame: () => {
+      failFrame = true
+    },
   }
 }
 
@@ -161,7 +194,13 @@ it('uses native signed browser authentication, not cookie names or owner princip
     if (cookie !== undefined) options.cookie = cookie
     await f.clean(await f.send('start', options), 401)
   }
-  for (const options of [{ origin: null }, { origin: 'https://evil.invalid' }, { host: 'evil.invalid' }, { host: 'localhost:3199' }, { headers: { 'sec-fetch-site': 'cross-site' } }]) {
+  for (const options of [
+    { origin: null },
+    { origin: 'https://evil.invalid' },
+    { host: 'evil.invalid' },
+    { host: 'localhost:3199' },
+    { headers: { 'sec-fetch-site': 'cross-site' } },
+  ]) {
     await f.clean(await f.send('start', { cookie: f.cookie, body, ...options }), 403)
   }
   const apiCookie = f.exchange(true)
@@ -175,7 +214,7 @@ it('uses native signed browser authentication, not cookie names or owner princip
 
   const first = await f.start()
   const cap = first.capability
-  for (const operation of ['status', 'frame', 'input', 'cancel'] as const) {
+  for (const operation of ['status', 'frame', 'input', 'cancel', 'complete'] as const) {
     await f.clean(await f.send(operation, { cap }), 401)
     await f.clean(await f.send(operation, { cookie: apiCookie, cap, peer: admission.peer }), 403)
     await f.clean(await f.send(operation, { cookie: f.cookie, cap, origin: 'https://evil.invalid' }), 403)
@@ -190,13 +229,27 @@ it('uses native signed browser authentication, not cookie names or owner princip
   expect(frame.headers.get('cache-control')).toBe('no-store')
   f.noEcho(JSON.stringify([...frame.headers]))
   expect(Buffer.from(await frame.arrayBuffer()).equals(Buffer.from(f.jpeg))).toBe(true)
-  await f.clean(await f.send('input', { cookie: f.cookie, cap, body: JSON.stringify({ attemptId: first.attempt.id, sequence: 1, input: { kind: 'text', text: f.canary } }) }), 200)
+  await f.clean(
+    await f.send('input', {
+      cookie: f.cookie,
+      cap,
+      body: JSON.stringify({ attemptId: first.attempt.id, sequence: 1, input: { kind: 'text', text: f.canary } }),
+    }),
+    200,
+  )
   expect(f.counts().inputs).toBe(1)
   await f.clean(await f.send('cancel', { cookie: f.cookie, cap, body: '{}' }), 200)
   expect(f.counts().closes).toBe(1)
   const second = await f.start()
-  await f.clean(await f.send('input', { cookie: f.cookie, cap: second.capability, body: JSON.stringify({ attemptId: first.attempt.id, sequence: 1, input: { kind: 'text', text: f.canary } }) }), 409)
-  for (const operation of ['status', 'frame', 'input', 'cancel'] as const) {
+  await f.clean(
+    await f.send('input', {
+      cookie: f.cookie,
+      cap: second.capability,
+      body: JSON.stringify({ attemptId: first.attempt.id, sequence: 1, input: { kind: 'text', text: f.canary } }),
+    }),
+    409,
+  )
+  for (const operation of ['status', 'frame', 'input', 'cancel', 'complete'] as const) {
     await f.clean(await f.send(operation, { cookie: f.cookie, cap }), 403)
   }
   f.failFrame()
@@ -208,8 +261,13 @@ it('enforces the 8KiB streamed body ceiling under genuine native browser admissi
   let cancelled = false
   let pulls = 0
   const body = new ReadableStream<Uint8Array>({
-    pull(controller) { pulls++; controller.enqueue(new Uint8Array(4096)) },
-    cancel() { cancelled = true },
+    pull(controller) {
+      pulls++
+      controller.enqueue(new Uint8Array(4096))
+    },
+    cancel() {
+      cancelled = true
+    },
   })
   await f.clean(await f.send('start', { cookie: f.cookie, body, headers: { 'content-length': '1' } }), 400)
   expect(cancelled).toBe(true)
@@ -219,10 +277,50 @@ it('enforces the 8KiB streamed body ceiling under genuine native browser admissi
     { body: '{"acceptRisks":true}', headers: { 'content-length': '8193' } },
     { body: f.canary },
     { body: JSON.stringify({ acceptRisks: true, extra: f.canary }) },
-  ]) await f.clean(await f.send('start', { cookie: f.cookie, ...options }), 400)
+  ])
+    await f.clean(await f.send('start', { cookie: f.cookie, ...options }), 400)
   expect(f.counts().opens).toBe(0)
   const json = '{"acceptRisks":true}'
   const result = await f.start(json.padEnd(8192, ' '))
   expect(f.counts().opens).toBe(1)
   await f.clean(await f.send('cancel', { cookie: f.cookie, cap: result.capability, body: '{}' }), 200)
+})
+
+it('accepts explicit complete under real native browser admission, rejects origin/Peer bypass and retires capability', async () => {
+  const f = await fixture('ready'),
+    start = await f.start(),
+    cap = start.capability
+  const body = JSON.stringify({ attemptId: start.attempt.id, sequence: 1 })
+  for (const options of [
+    { origin: null },
+    { origin: 'http://localhost:3199' },
+    { host: 'localhost:3199' },
+    { host: 'evil.invalid' },
+    { headers: { 'sec-fetch-site': 'cross-site' } },
+  ]) {
+    await f.clean(await f.send('complete', { cookie: f.cookie, cap, body, ...options }), 403)
+  }
+  await f.clean(await f.send('complete', { cap, body }), 401)
+  const apiCookie = f.exchange(true)
+  const admission = f.connection.admit({ headers: new Headers({ host, cookie: apiCookie, origin }) })
+  if (!('peer' in admission)) throw new Error('Native API exchange was not admitted.')
+  await f.clean(await f.send('complete', { cookie: apiCookie, cap, body, peer: admission.peer }), 403)
+  expect(f.counts().completions).toBe(0)
+  const response = await f.send('complete', { cookie: f.cookie, cap, body })
+  expect(response.status).toBe(200)
+  const raw = await response.text()
+  f.noEcho(raw)
+  expect(raw).toContain('"state":"completed"')
+  expect(f.counts()).toMatchObject({ opens: 1, closes: 1, completions: 1 })
+  for (const operation of ['status', 'frame', 'input', 'complete', 'cancel'] as const) {
+    await f.clean(await f.send(operation, { cookie: f.cookie, cap }), 403)
+  }
+})
+
+it('sanitizes complete owner failure under real native admission without credentials or false acknowledgment', async () => {
+  const f = await fixture('fail'),
+    start = await f.start()
+  await f.clean(await f.send('complete', { cookie: f.cookie, cap: start.capability, body: JSON.stringify({ attemptId: start.attempt.id, sequence: 1 }) }), 502)
+  await f.clean(await f.send('status', { cookie: f.cookie, cap: start.capability }), 403)
+  expect(f.counts()).toMatchObject({ completions: 0, closes: 1 })
 })

@@ -1,8 +1,12 @@
 # OpenAI Dot adapter (unofficial)
 
+![Human-only Dot connection page inside DSH](<docs/screenshots/dot-connection.png>)
+
+_Synthetic loopback-only Chromium enrollment inside the real DSH page—not a real provider sign-in or Yield account._
+
 **Port**, not a fresh protocol implementation: pinned Beeper behavior avoids rediscovering the private protocol while staying native to the DSH Node Host (no Go or Matrix daemon). This package alone is **AGPL-3.0-only**; see [LICENSE](LICENSE) and [provenance/update policy](PROVENANCE.md).
 
-Registers a v1 `BotAdapter` with `ctx.get('botAdapters')`; the provider-neutral Bots plugin owns UI, durable outbox, checkpoints and the three-second polling loop. This Host-only plugin adds no browser surface and performs no network requests until the user connects through Bots after accepting its explicit broad-account/unsupported-protocol warning.
+Registers a v1 `BotAdapter` with `ctx.get('botAdapters')`; the provider-neutral Bots plugin owns UI, durable outbox, checkpoints and the three-second polling loop. Default HTTP mode performs no provider request until the user connects through Bots after accepting its explicit broad-account/unsupported-protocol warning. Optional managed-browser mode adds the **Dot connection** page for human admission inside DSH; it starts a fresh backend browser only after separate explicit consent. Conversation UI and the durable outbox remain in Bots, not in a replacement chat/model.
 
 ## Node composition
 
@@ -11,6 +15,37 @@ Registers a v1 `BotAdapter` with `ctx.get('botAdapters')`; the provider-neutral 
 Without a store, both the management metadata and session reference-binding method are absent. Core refuses management grants without restarting or poisoning a healthy manual worker. Memory-only renewal remains available in legacy reference mode; external-account mode never uses cookie renewal. Nothing writes a caller's reference backend. With a store, the original explicit-consent and identity-bound write semantics remain unchanged.
 
 Secret Catalog is a **Host-entry-only optional peer** (and build/test dependency), not a dependency of the pure adapter. The default reference-mode Host entry requires that Catalog package/API. Explicit account mode instead dynamically consumes the public AI Accounts capability and native WebServer (optional Host peers); standalone adapter/authority-client consumers need neither Host graph. The adapter declares its direct dshx API runtime dependency. AGPL/source/provenance obligations apply to applications composing it, not just to its default Host entry.
+
+## Managed browser admission inside DSH
+
+The declared `browser-session` and `auth` public modules compose a normal Node-owned browser transport and private human viewer. No existing browser profile/cookies are imported, no ChatGPT tab or desktop helper must remain open, and no model or Dot identity is replaced. HTTP-only mode remains the default; browser mode is explicit, never a silent response to403.
+
+1. Open **Dot connection** in DSH, accept the browser risk notice and choose **Start browser**.
+2. Complete the provider's normal check yourself in the raster viewer. No automatic challenge solving, stealth, TLS/UA impersonation or generic browser commands are provided.
+3. Choose **Use this session**. The viewer clears private input/pixels, drains acknowledged I/O and revokes its controller. The Node owner retains the same browser for actual API requests.
+4. Return to **Bots** and connect/reconnect the configured account. Normal adapter discovery and exact room/member checks—not the viewer's ready label—establish the remote bot identity.
+
+The normal app still reads the explicitly selected DSH login through its private account authority. Browser mode supplies real browser networking and its own normal cookies; it does **not** silently substitute a web-session token or prove that the Codex grant is accepted. External Google/Apple/Microsoft SSO is outside the fixed first-party navigation policy. Raw input, frames, controller capabilities and credentials are excluded from agent tools, generic RPC, Query/state snapshots, DOM text, storage and logs. All connected DSH browsers share the owner's authority; the notice does not promise confidentiality from same-OS-user software or malicious DSH scripts.
+
+The Host may keep the main DSH listener unchanged and own a separate private loopback account listener. Example trusted profile configuration:
+
+```yaml
+mode: account
+accountIds: [your_existing_dsh_account_id]
+acceptAccountRisks: true
+authorityTransport: loopback
+authorityOrigin: http://127.0.0.1:8788
+authorityTokenReference: secret:DOT_ACCOUNT_AUTHORITY
+enrollmentServiceOrigin: http://127.0.0.1:8787
+enrollmentTokenReference: secret:BOTS_SERVICE_CONTROL
+browserOrigin: http://localhost:3198
+```
+
+The two service keys must differ. Human credential/viewer access requires HTTPS or loopback HTTP, with exact native BrowserPeer plus paired Host/Origin admission. Additional origins are explicit trusted `additionalBrowserOrigins`; no wildcard is accepted. The private Node endpoints inherit the normal service bearer fence and expose no browser CORS. No running DSH rebind/restart is performed by this feature's verification.
+
+Renderer sandboxing, bounded I/O, fixed document origins and normal TLS/CORS are enforced; these are **not OS-level provider-only egress confinement**. The browser is a trusted first-party human enrollment surface, not a general Agent browser. System Chrome155 synthetic runtime diagnostics confirm namespace/seccomp/TSYNC renderer sandboxing. Container browser provisioning/kernel compatibility remains separate from the historical no-browser Docker smoke.
+
+**Verified locally:** real scratch DSH → private native proxy → authenticated normal Node service → real isolated Chromium → manual synthetic completion → retained cookie-backed browser → actual Dot adapter synthetic connect/send/reply, with one Node outbox and no Host Bots domain. The full journey passed twice and positively cleaned all browser/Host/service/profile/lease resources. This is not live OpenAI authorization or installed-GUI acceptance.
 
 ## Credentials and linking
 

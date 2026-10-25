@@ -2,6 +2,12 @@
 
 The first version implements provider-neutral Bots, durable messaging and an unofficial Dot protocol adapter, but it is **not a complete live product**. The user now requires being able to chat with their existing Dot in this GUI. Passing fixtures or preparing a release is not acceptance. Current behavior and limits remain documented in the [guide](../../docs/bots.md), [Bots README](../../plugins/@dshfiles/bots/README.md) and [Dot README](../../plugins/@dshfiles/bot-openai-dot/README.md).
 
+## Current continuation: the in-DSH browser flow is implemented
+
+**Resume here:** [in-GUI enrollment milestone and activation steps](in-gui-enrollment.md). The full real-scratch-DSH synthetic journey now passes twice: consent, real isolated Chromium raster/input, manual completion, retained browser, then actual Dot adapter connect/send/reply through one Node outbox. No ChatGPT tab or desktop helper is required by this implementation. Latest source: Bots155tests; Dot457tests including12real Chrome tests; normal Node app11tests. Live Manuel activation, real Yield authorization and browser-container provisioning are still unfinished. No new real message or live DSH restart occurred.
+
+This supersedes earlier pending-manual-window/provisional-containment statements in the historical rows below. The old containment fixture is unchanged; the new production driver explicitly adopts a trusted first-party human-browser boundary and does not claim OS-level provider-only egress confinement. Preserve that distinction during deployment.
+
 ## Latest authorized investigation —25October
 
 The user renewed authorization and supplied [BDots](https://github.com/fayazara/bdots). A fresh selected-login Node read confirms a **Cloudflare browser challenge**, not a proven OpenAI OAuth refusal. The normal browser is the **same account/user**, and the actual provider schemas now validate discovery, room membership and32 recent Yield messages after two reproduced nullable-field fixes. No tokens/cookies/transcript text leave that browser diagnostic; no new message was sent. Dot tests: **290passed**. [Evidence and remaining boundary](renewed-authorization.md).

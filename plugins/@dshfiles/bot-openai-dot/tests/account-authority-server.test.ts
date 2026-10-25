@@ -210,13 +210,13 @@ it('registers on the actual native WebServer public route and unload removes it 
   })
   const fork = ctx.plugin(
     { name: host.name, inject: [...host.inject], Config: host.Config, apply: host.setup },
-    {
+    dotHostConfigSchema.parse({
       mode: 'account',
       accountIds: ['SYNTHETIC_NO_LIVE_ACCOUNT'],
       acceptAccountRisks: true,
       authorityOrigin: server.getOrigin(),
       authorityTokenReference: 'secret:SYNTH_AUTHORITY',
-    },
+    }),
   )
   await fork
   expect(registry.get('openai-dot')?.info.fields.map(field => field.key)).toEqual(['accountId'])

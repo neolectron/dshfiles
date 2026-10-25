@@ -4,9 +4,10 @@ import { Peer } from '@deepseek-ai/dsh-client-connection'
 import type { ConnectionFetchRoute, HostConnectionHandle } from '@deepseek-ai/dsh-client-connection'
 import { JsonText } from '@dshfiles/dshx/api'
 import { afterEach, expect, it, vi } from 'vitest'
-import { AuthAttemptManager } from '../src/auth-attempt.js'
+import { AuthAttemptError, AuthAttemptManager } from '../src/auth-attempt.js'
 import type { BrowserPort } from '../src/auth-attempt.js'
 import { authStartResultSchema, dotAuthCapabilityHeader, dotAuthRoutes } from '../src/auth-protocol.js'
+import type { AuthAttemptOperations } from '../src/auth-protocol.js'
 import { registerDotAuthRoutes } from '../src/auth-transport.js'
 
 const canary = 'SYNTHETIC_PRIVATE_AUTH_CANARY'
@@ -19,7 +20,14 @@ async function settle() {
   await Promise.resolve()
   await Promise.resolve()
 }
-function fixture(port: BrowserPort = { frame: async () => ({ bytes: jpeg, width: 640, height: 480 }), input: async () => {}, close: async () => {} }) {
+function fixture(
+  port: BrowserPort = { frame: async () => ({ bytes: jpeg, width: 640, height: 480 }), input: async () => {}, close: async () => {} },
+  options: {
+    onComplete?: (signal: AbortSignal) => Promise<void>
+    additionalBrowserOrigins?: readonly string[]
+    operations?: (manager: AuthAttemptManager) => AuthAttemptOperations
+  } = {},
+) {
   // Real public Peer identities, but intentionally injected native admission: this is
   // NOT proof of the production carrier's authentication or BrowserPort adapter.
   const context = new Context()
@@ -47,8 +55,12 @@ function fixture(port: BrowserPort = { frame: async () => ({ bytes: jpeg, width:
       },
     },
   }
-  const manager = new AuthAttemptManager({ open: async () => port })
-  const dispose = registerDotAuthRoutes(connection, manager, { browserOrigin: origin })
+  const open = async () => port
+  const manager = new AuthAttemptManager(options.onComplete ? { open, onComplete: options.onComplete } : { open })
+  const routeOptions = options.additionalBrowserOrigins
+    ? { browserOrigin: origin, additionalBrowserOrigins: options.additionalBrowserOrigins }
+    : { browserOrigin: origin }
+  const dispose = registerDotAuthRoutes(connection, options.operations?.(manager) ?? manager, routeOptions)
   cleanups.push(async () => {
     await dispose().catch(() => {})
     await browser.dispose()
@@ -86,6 +98,7 @@ function fixture(port: BrowserPort = { frame: async () => ({ bytes: jpeg, width:
   }
   return {
     routes,
+    connection,
     admit,
     manager,
     removals,
@@ -111,10 +124,10 @@ it('registers exactly the frozen routes through the native public streaming fetc
   const start = await f.start()
   await f.dispose()
   expect(f.routes.size).toBe(0)
-  expect(f.removals).toHaveBeenCalledTimes(5)
+  expect(f.removals).toHaveBeenCalledTimes(6)
   expect(() => f.manager.status(start.capability)).toThrow()
   await f.dispose()
-  expect(f.removals).toHaveBeenCalledTimes(5)
+  expect(f.removals).toHaveBeenCalledTimes(6)
 })
 
 it('requires bounded strict empty JSON on status/frame and rejects GET without capturing', async () => {
@@ -191,7 +204,7 @@ it('requires same-origin CSRF for every POST, Host agreement and native trust, n
     expect((await f.send('start', { body: { acceptRisks: true }, ...options })).status).toBe(403)
   }
   const start = await f.start()
-  for (const operation of ['status', 'frame', 'input', 'cancel'] as const) {
+  for (const operation of ['status', 'frame', 'input', 'cancel', 'complete'] as const) {
     expect((await f.send(operation, { cap: start.capability, body: {}, origin: null })).status).toBe(403)
     expect((await f.send(operation, { cap: start.capability, body: {}, origin: 'https://evil.invalid' })).status).toBe(403)
   }
@@ -201,7 +214,7 @@ it('requires same-origin CSRF for every POST, Host agreement and native trust, n
 it('returns capability only from browser start, rejects queries and requires header possession on every private route', async () => {
   const f = fixture()
   const start = await f.start()
-  for (const operation of ['status', 'frame', 'input', 'cancel'] as const) {
+  for (const operation of ['status', 'frame', 'input', 'cancel', 'complete'] as const) {
     for (const options of [{}, { cap: 'forged' }, { suffix: `?capability=${canary}` }, { suffix: `?attemptId=${start.attempt.id}` }]) {
       const requestOptions: Parameters<typeof f.send>[1] = { ...options }
       if (operation === 'input' || operation === 'cancel') requestOptions.body = {}
@@ -358,4 +371,113 @@ it('never echoes a port exception, raw cause or input and never retries', async 
   expect(await response.text()).toBe('{"error":"failed"}')
   expect(port.frame).toHaveBeenCalledTimes(1)
   expect((await f.send('frame', { cap: start.capability })).status).toBe(403)
+})
+
+it('completes only through native admission plus capability, closed sequence body, then revokes all routes', async () => {
+  const onComplete = vi.fn(async () => {})
+  const f = fixture(undefined, { onComplete }),
+    start = await f.start()
+  for (const body of [{}, { attemptId: start.attempt.id, sequence: 1, credentials: canary }, { attemptId: start.attempt.id, sequence: 0 }]) {
+    expect((await f.send('complete', { cap: start.capability, body })).status).toBe(400)
+  }
+  expect(
+    (await f.send('input', { cap: start.capability, body: { attemptId: start.attempt.id, sequence: 1, input: { kind: 'text', text: canary } } })).status,
+  ).toBe(200)
+  expect((await f.send('complete', { cap: start.capability, body: { attemptId: start.attempt.id, sequence: 1 } })).status).toBe(409)
+  expect(onComplete).not.toHaveBeenCalled()
+  const result = await f.send('complete', { cap: start.capability, body: { attemptId: start.attempt.id, sequence: 2 } })
+  expect(result.status).toBe(200)
+  const raw = await result.text()
+  expect(raw).toContain('"state":"completed"')
+  expect(raw).not.toContain(start.capability)
+  expect(result.headers.get('cache-control')).toBe('no-store')
+  for (const operation of ['status', 'frame', 'input', 'complete', 'cancel'] as const)
+    expect((await f.send(operation, { cap: start.capability })).status).toBe(403)
+  expect(onComplete).toHaveBeenCalledTimes(1)
+})
+
+it('accepts only explicit canonical extra origins paired with their own Host, with native admission still authoritative', async () => {
+  const alias = 'http://localhost:3199'
+  const f = fixture(undefined, { additionalBrowserOrigins: [alias] })
+  expect((await f.send('start', { host: 'localhost:3199', origin: alias, body: { acceptRisks: true } })).status).toBe(200)
+  for (const options of [
+    { host: 'localhost:3199', origin },
+    { host: '127.0.0.1:3199', origin: alias },
+    { host: 'localhost:3200', origin: 'http://localhost:3200' },
+  ]) {
+    expect((await f.send('status', options)).status).toBe(403)
+  }
+  f.setAdmission('untrusted')
+  expect((await f.send('status', { host: 'localhost:3199', origin: alias })).status).toBe(403)
+  for (const invalid of ['*', 'http://*.test', 'null', 'file:///private', `${alias}/`, 'http://user:pass@localhost:3199', `${alias}?x=1`]) {
+    expect(() => registerDotAuthRoutes(f.connection, f.manager, { browserOrigin: origin, additionalBrowserOrigins: [invalid] })).toThrow()
+  }
+})
+
+it('awaits remote authorization before reading a private body and rechecks remote status after frame work', async () => {
+  let release!: () => void,
+    finalCheck!: () => void,
+    checks = 0
+  const gate = new Promise<void>(resolve => {
+    release = resolve
+  })
+  const finalStarted = new Promise<void>(resolve => {
+    finalCheck = resolve
+  })
+  const f = fixture(undefined, {
+    operations: manager => ({
+      start: async input => manager.start(input),
+      status: async cap => {
+        checks++
+        if (checks === 2) {
+          finalCheck()
+          await gate
+        }
+        return manager.status(cap)
+      },
+      frame: (cap, signal) => manager.frame(cap, signal),
+      input: (cap, request, signal) => manager.input(cap, request, signal),
+      complete: (cap, request, signal) => manager.complete(cap, request, signal),
+      cancel: cap => manager.cancel(cap),
+      close: () => manager.close(),
+    }),
+  })
+  const start = await f.start()
+  const pending = f.send('frame', { cap: start.capability })
+  await finalStarted
+  await f.manager.cancel(start.capability)
+  release()
+  const result = await pending
+  expect(result.status).toBe(403)
+  expect(await result.text()).not.toContain(canary)
+
+  let rejectAuth!: (error: AuthAttemptError) => void
+  const denied = fixture(undefined, {
+    operations: manager => ({
+      start: input => manager.start(input),
+      status: () =>
+        new Promise((_resolve, reject) => {
+          rejectAuth = reject
+        }),
+      frame: (cap, signal) => manager.frame(cap, signal),
+      input: (cap, request, signal) => manager.input(cap, request, signal),
+      complete: (cap, request, signal) => manager.complete(cap, request, signal),
+      cancel: cap => manager.cancel(cap),
+      close: () => manager.close(),
+    }),
+  })
+  const route = denied.routes.get(dotAuthRoutes.complete)
+  if (!route) throw new Error('Missing complete route')
+  const request = new Request(`${origin}${route.path}`, {
+    method: 'POST',
+    headers: { host: '127.0.0.1:3199', origin, 'content-type': 'application/json' },
+    body: '{}',
+  })
+  if (!request.body) throw new Error('Missing body')
+  const reader = vi.spyOn(request.body, 'getReader')
+  const response = route.fetch(request)
+  expect(reader).not.toHaveBeenCalled()
+  rejectAuth(new AuthAttemptError('forbidden'))
+  expect((await response).status).toBe(403)
+  expect(reader).not.toHaveBeenCalled()
 })

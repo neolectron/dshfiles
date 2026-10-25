@@ -2,9 +2,16 @@
 import type { ConnectionFetchRoute, HostConnectionHandle } from '@deepseek-ai/dsh-client-connection'
 import { JsonText } from '@dshfiles/dshx/api'
 import { AuthAttemptError } from './auth-attempt.js'
-import type { AuthAttemptErrorCode, AuthAttemptManager } from './auth-attempt.js'
-import { authEmptyRequestSchema, authInputRequestSchema, authStartSchema, dotAuthCapabilityHeader, dotAuthRoutes } from './auth-protocol.js'
-import type { AuthAttemptSnapshot, AuthStartResult } from './auth-protocol.js'
+import type { AuthAttemptErrorCode } from './auth-attempt.js'
+import {
+  authCompleteRequestSchema,
+  authEmptyRequestSchema,
+  authInputRequestSchema,
+  authStartSchema,
+  dotAuthCapabilityHeader,
+  dotAuthRoutes,
+} from './auth-protocol.js'
+import type { AuthAttemptOperations, AuthAttemptSnapshot, AuthStartResult } from './auth-protocol.js'
 
 const maxBodyBytes = 8 * 1024
 const privateHeaders = {
@@ -66,24 +73,26 @@ async function bodyText(request: Request): Promise<string> {
 }
 
 /**
- * SOURCE/FIXTURE ONLY: not called by the plugin Host. Parent must prove its page-only
- * BrowserPort and native Web admission before production composition.
+ * HumanOnly authentication surface. Native owner admission remains authoritative.
+ * Raster/input/capability are private HTTP only, never generic RPC or agent tools.
  * No Remote API/tools expose these routes or their private controller capability.
  */
 export function registerDotAuthRoutes(
   connection: Pick<HostConnectionHandle, 'fetch' | 'admit' | 'browserPeer'>,
-  manager: AuthAttemptManager,
-  options: { readonly browserOrigin: string },
+  manager: AuthAttemptOperations,
+  options: { readonly browserOrigin: string; readonly additionalBrowserOrigins?: readonly string[] },
 ): () => Promise<void> {
   // The native node:http bridge uses a synthetic dsh.internal Request URL.
   // Only the composition root can supply the proved external browser origin.
-  let browserUrl: URL
-  try {
-    browserUrl = new URL(options.browserOrigin)
-    if (browserUrl.origin !== options.browserOrigin || (browserUrl.protocol !== 'http:' && browserUrl.protocol !== 'https:')) throw new Error()
-  } catch {
-    throw new AuthAttemptError('invalid-request')
-  }
+  const origins = [options.browserOrigin, ...(options.additionalBrowserOrigins ?? [])].map(value => {
+    try {
+      const url = new URL(value)
+      if (url.origin !== value || url.hostname.includes('*') || !['http:', 'https:'].includes(url.protocol)) throw new Error()
+      return url
+    } catch {
+      throw new AuthAttemptError('invalid-request')
+    }
+  })
   const disposers: Array<() => Promise<void>> = []
   let disposed = false
   for (const [operation, path] of Object.entries(dotAuthRoutes)) {
@@ -103,30 +112,34 @@ export function registerDotAuthRoutes(
           if ('rejection' in admission) return refused(admission.rejection)
           if (admission.peer !== connection.browserPeer) return refused(403)
           const url = new URL(request.url)
-          if (request.headers.get('host')?.toLowerCase() !== browserUrl.host.toLowerCase()) return refused(403)
           const origin = request.headers.get('origin')
-          if (origin !== browserUrl.origin) return refused(403)
+          const host = request.headers.get('host')?.toLowerCase()
+          if (!origins.some(url => origin === url.origin && host === url.host.toLowerCase())) return refused(403)
           const site = request.headers.get('sec-fetch-site')
           if (site !== null && site !== 'same-origin') return refused(403)
           if (url.pathname !== path || url.search || url.hash || request.method !== 'POST') return refused(400, 'invalid-request')
           if (operation === 'start') {
             const parsed = JsonText.parse(await bodyText(request), authStartSchema)
-            return json(manager.start(parsed))
+            return json(await manager.start(parsed))
           }
           const capability = request.headers.get(dotAuthCapabilityHeader) ?? ''
           // Authorize before reading any private operation's request body.
-          manager.status(capability)
+          await manager.status(capability)
+          if (operation === 'complete') {
+            const parsed = JsonText.parse(await bodyText(request), authCompleteRequestSchema)
+            return json(await manager.complete(capability, parsed, request.signal))
+          }
           if (operation === 'input') {
             const parsed = JsonText.parse(await bodyText(request), authInputRequestSchema)
             await manager.input(capability, parsed, request.signal)
-            return json(manager.status(capability))
+            return json(await manager.status(capability))
           }
           JsonText.parse(await bodyText(request), authEmptyRequestSchema)
-          if (operation === 'status') return json(manager.status(capability))
+          if (operation === 'status') return json(await manager.status(capability))
           if (operation === 'frame') {
             const frame = await manager.frame(capability, request.signal)
             // Recheck after the await boundary before publishing private bytes.
-            manager.status(capability)
+            await manager.status(capability)
             return new Response(new Uint8Array(frame.bytes), {
               headers: {
                 ...privateHeaders,
