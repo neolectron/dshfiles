@@ -1,12 +1,16 @@
 #!/usr/bin/env node
 // Read-only feasibility probe: no browser, cookies, refresh, fallback, POST, app server or profile changes.
+import { createHash } from 'node:crypto'
 import { createRequire } from 'node:module'
 import { pathToFileURL } from 'node:url'
 import { mkdtemp, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-const accountId = 'codex_manuel' // Previously selected account; never walk the pool.
+const selectedArgument = process.argv.slice(2)
+if (selectedArgument.length > 1 || (selectedArgument.length === 1 && !selectedArgument[0]?.startsWith('--account=')))
+  throw new Error('Use one explicit --account=<id>, or the previously selected default. No pool fallback.')
+const accountId = selectedArgument[0]?.slice('--account='.length) ?? 'codex_manuel'
 const accountRequire = createRequire(new URL('../plugins/@dshfiles/ai-accounts/package.json', import.meta.url))
 const dotRequire = createRequire(new URL('../plugins/@dshfiles/bot-openai-dot/package.json', import.meta.url))
 const { OpenAIAccountAccess, OpenAIAccountAccessError } = await import(pathToFileURL(accountRequire.resolve('@dshfiles/ai-accounts/openai-account-access')))
@@ -27,6 +31,9 @@ const report = {
   localCredentialUsable: false,
   credentialReads: 0,
   ownerFailure: null,
+  localLoginBefore: null,
+  localLoginAfter: null,
+  tokenMaterialUnchanged: null,
   requests: [],
   discovery: 'not-started',
 }
@@ -45,6 +52,20 @@ try {
   report.control = { host: 'api.openai.com', authenticated: false, outcome: 'network-unavailable' }
 }
 const owner = OpenAIAccountAccess.create({ accountId, purpose: 'openai-dot', acceptRisks: true })
+let initialFingerprint
+const localLoginState = async before => {
+  try {
+    return await owner.withAccessToken(AbortSignal.timeout(7000), async access => {
+      const fingerprint = createHash('sha256').update(access).digest('hex')
+      if (before) initialFingerprint = fingerprint
+      else if (initialFingerprint !== undefined) report.tokenMaterialUnchanged = fingerprint === initialFingerprint
+      return { locallyUsable: true, check: 'local-expiry-and-identity-only' }
+    })
+  } catch (error) {
+    return { locallyUsable: false, reason: error instanceof OpenAIAccountAccessError ? error.code : 'private-error-redacted' }
+  }
+}
+report.localLoginBefore = await localLoginState(true)
 let session
 const lifecycle = AbortSignal.timeout(25000)
 const route = path =>
@@ -110,8 +131,12 @@ try {
         ? `owner-refused:${error.code}`
         : 'private-error-redacted'
 } finally {
-  await session?.close()
-  owner.close()
+  try {
+    await session?.close()
+  } finally {
+    report.localLoginAfter = await localLoginState(false)
+    owner.close()
+  }
 }
 const root = await mkdtemp(join(tmpdir(), 'yield-direct-http-poc-'))
 const receipt = join(root, 'receipt.json')

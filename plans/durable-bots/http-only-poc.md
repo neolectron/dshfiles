@@ -4,7 +4,27 @@
 
 The user rejected any backend browser and requested small feasibility proofs before further implementation. The managed-browser path is stopped and not deployed. No live profile change, server restart, cookie/profile import, OAuth refresh, account fallback, anti-bot evasion or real message occurred in these proofs.
 
-## Results
+## Latest authorized account comparison: Sylvain
+
+The user explicitly authorized `codex_ocx_sylvain` instead of the earlier Manuel selection. The real ordinary-HTTP proof made exactly one authenticated Dot-primary GET. It returned403HTML with the explicit Cloudflare challenge in58ms. Sylvain's access token was locally usable before and after, and a private SHA-256 comparison confirmed the access-token material was unchanged; only that boolean was reported, never the digest or bearer. Native identity metadata reported signed-in both before and after. No message, OAuth refresh, logout/revoke endpoint or credential write occurred.
+
+Receipt: `/tmp/yield-direct-http-poc-MYzEhl/receipt.json`. Reproduction:
+
+```sh
+DSH_HOME=/home/neolectron/.dsh node scripts/poc-yield-direct-http.mjs --account=codex_ocx_sylvain
+```
+
+This proves no local logout/token change was observed in this bounded test. It does not remotely validate refresh-grant validity or prove that the provider could never revoke a session later. The earlier Manuel probe found an already-expired access token before Dot network I/O; Marwan was not used for authenticated provider calls in these proofs. No evidence establishes that these read-only tests caused either reported login problem.
+
+### Why Codex differs
+
+The actual serving DSH uses the pi-ai HTTP/SSE Codex provider (plugin resolves1.3.0), whose default inference target is `https://chatgpt.com/backend-api/codex/responses`. The Dot adapter instead calls `/backend-api/tbo/primary`, then verified Dot/room messaging endpoints. Same host/HTTP technology does not mean same resource, edge rules or permissions. Route-specific security is a plausible explanation, not a measured OpenAI configuration.
+
+The serving model route also has an OAuth credential store with refresh/persistence; pi-ai refreshes near expiry. The Dot probe deliberately uses a read-only capability that rejects an expiring token and does not invoke that model resolver. Expired access JWT, invalid/revoked refresh grant and a local UI signed-in indicator are different facts. Calling Codex inference cannot address the user's existing Yield and its memory/tools.
+
+Read-only source trace also found a possible model-routing handoff risk: `options.apiKey` can take precedence over a just-refreshed credential on that request. This is not reproduced and is not evidence of the cause of the reported account expirations. Do not silently patch or expand this feasibility task to fix it.
+
+## Earlier results
 
 | Path | Evidence | Verdict |
 | --- | --- | --- |
