@@ -115,7 +115,40 @@ const call = (origin: string, path: string, body?: z.infer<ReturnType<typeof z.j
   return fetch(`${origin}${path}`, options)
 }
 
+interface ResourceCleanupGate {
+  enter?: () => void
+  finish?: () => void
+}
 describe('Bots durable standalone Node ownership', () => {
+  it('stops admission but retains its exclusive lease until composition-owned resource cleanup is confirmed', async () => {
+    const root = join(await directory(), 'resource-order')
+    const gate: ResourceCleanupGate = {}
+    const entered = new Promise<void>(resolve => {
+      gate.enter = resolve
+    })
+    const quiesced = new Promise<void>(resolve => {
+      gate.finish = resolve
+    })
+    const service = await startBotsNodeService({
+      storageRoot: root,
+      registry: createBotAdapterRegistry(),
+      bearerToken: token,
+      beforeStorageRelease: async () => {
+        gate.enter?.()
+        await quiesced
+      },
+    })
+    cleanup.add(service.close)
+    const stopping = service.close()
+    await entered
+    expect((await lstat(join(root, '.bots-service-owner'))).isDirectory()).toBe(true)
+    await expect(fetch(`${service.origin}/healthz`)).rejects.toThrow()
+    await expect(startBotsNodeService({ storageRoot: root, registry: createBotAdapterRegistry(), bearerToken: token })).rejects.toThrow()
+    gate.finish?.()
+    await stopping
+    await expect(lstat(join(root, '.bots-service-owner'))).rejects.toMatchObject({ code: 'ENOENT' })
+  })
+
   it('creates a private dedicated root and persists real JSON plus request tombstones through close/reopen', async () => {
     const root = join(await directory(), 'service')
     const adapter = fixtureAdapter()

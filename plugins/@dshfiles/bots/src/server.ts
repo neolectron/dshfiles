@@ -5,6 +5,16 @@ import { z } from 'zod'
 import { botsApi } from './api.js'
 import { BotsEngine, type BotsEngineOptions } from './engine.js'
 import { validateBotsServerConfiguration } from './server-config.js'
+import { BotsPrivateEndpoints } from './server-extension.js'
+
+/** Trusted private HTTP composition port; not domain RPC, browser CORS or agent tools. */
+export interface BotsPrivateEndpoint {
+  readonly path: string
+  readonly method: 'GET' | 'POST'
+  readonly requestHeaders?: readonly string[]
+  readonly responseHeaders?: readonly string[]
+  readonly handle: (request: Request) => Promise<Response>
+}
 
 const rawJsonSchema = z.json()
 type RawJson = z.infer<typeof rawJsonSchema>
@@ -71,11 +81,14 @@ export interface BotsServerOptions {
   readonly bearerToken: string
   readonly host?: '127.0.0.1' | '0.0.0.0'
   readonly port?: number
+  readonly privateEndpoints?: readonly BotsPrivateEndpoint[]
 }
 export async function startBotsServer(options: BotsServerOptions): Promise<{ readonly origin: string; readonly close: () => Promise<void> }> {
   const { host, port } = validateBotsServerConfiguration(options)
   const expected = createHash('sha256').update(`Bearer ${options.bearerToken}`).digest()
   const engine = new BotsEngine({ store: options.store, registry: options.registry })
+  const privateEndpoints = BotsPrivateEndpoints.map(options.privateEndpoints)
+  const requests = new Set<AbortController>()
   let closing = false
   type Route = (raw: RawJson | undefined, response: ServerResponse) => Promise<void>
   const route =
@@ -103,11 +116,11 @@ export async function startBotsServer(options: BotsServerOptions): Promise<{ rea
     ['/v1/markRead', route(botsApi.methods.markRead, input => engine.markRead(input))],
     ['/v1/setCredentialManagement', route(botsApi.methods.setCredentialManagement, input => engine.setCredentialManagement(input))],
   ])
-  const dispatch = async (request: IncomingMessage, response: ServerResponse): Promise<void> => {
+  const dispatch = async (request: IncomingMessage, response: ServerResponse, signal: AbortSignal): Promise<void> => {
     if (closing) return failure(503, 'unavailable')
     // This first transport is server-to-server: no ambient browser authority, query credentials or absolute URLs.
     const path = request.url ?? ''
-    if (request.headers.origin !== undefined || !/^\/[A-Za-z0-9/]+$/.test(path)) return failure(400, 'bad-request')
+    if (request.headers.origin !== undefined || !/^\/[A-Za-z0-9/-]+$/.test(path)) return failure(400, 'bad-request')
     if (request.headers['content-encoding'] !== undefined) return failure(415, 'unsupported-media')
     if (path === '/healthz') {
       if (request.method !== 'GET') return failure(405, 'method-not-allowed')
@@ -117,6 +130,20 @@ export async function startBotsServer(options: BotsServerOptions): Promise<{ rea
     }
     const authorization = request.headers.authorization ?? ''
     if (!timingSafeEqual(expected, createHash('sha256').update(authorization).digest())) return failure(401, 'unauthorized')
+    const extension = privateEndpoints.get(path)
+    if (extension !== undefined) {
+      if (request.method !== extension.method) return failure(405, 'method-not-allowed')
+      if (extension.method === 'GET') {
+        if (request.headers['transfer-encoding'] !== undefined || Number(request.headers['content-length'] ?? 0) !== 0) return failure(400, 'bad-request')
+        await BotsPrivateEndpoints.serve(extension, request, response, undefined, signal)
+      } else {
+        if (request.headers['content-type']?.trim().toLowerCase() !== 'application/json') return failure(415, 'unsupported-media')
+        const length = Number(request.headers['content-length'] ?? 0)
+        if (!Number.isSafeInteger(length) || length < 0 || length > 65536) return failure(413, 'too-large')
+        await BotsPrivateEndpoints.serve(extension, request, response, JSON.stringify(await readBody(request)), signal)
+      }
+      return
+    }
     const handler = routes.get(path)
     if (handler === undefined) return failure(404, 'not-found')
     if (request.method !== (path === '/v1/snapshot' ? 'GET' : 'POST')) return failure(405, 'method-not-allowed')
@@ -134,17 +161,29 @@ export async function startBotsServer(options: BotsServerOptions): Promise<{ rea
   const server = createServer(
     { maxHeaderSize: 8192, requestTimeout: 12000, headersTimeout: 10000, keepAliveTimeout: 1000, connectionsCheckingInterval: 1000 },
     (request, response) => {
+      const controller = new AbortController()
+      requests.add(controller)
+      request.once('aborted', () => controller.abort())
+      response.once('close', () => {
+        if (!response.writableEnded) controller.abort()
+      })
       const deadline = setTimeout(() => {
+        controller.abort()
         respond(response, 504, { error: 'timeout' })
         request.destroy()
       }, 20000)
       deadline.unref()
       response.once('close', () => clearTimeout(deadline))
       response.once('finish', () => request.destroy())
-      void dispatch(request, response).catch(error => {
-        if (error instanceof HttpFailure) respond(response, error.status, { error: error.code })
-        else respond(response, error instanceof PluginApiError ? 409 : 500, { error: error instanceof PluginApiError ? 'refused' : 'internal' })
-      })
+      void dispatch(request, response, controller.signal)
+        .catch(error => {
+          if (error instanceof HttpFailure) respond(response, error.status, { error: error.code })
+          else respond(response, error instanceof PluginApiError ? 409 : 500, { error: error instanceof PluginApiError ? 'refused' : 'internal' })
+        })
+        .finally(() => {
+          requests.delete(controller)
+          controller.abort()
+        })
     },
   )
   server.maxConnections = 128
@@ -176,6 +215,7 @@ export async function startBotsServer(options: BotsServerOptions): Promise<{ rea
     close: () => {
       closed ??= (async () => {
         closing = true
+        for (const controller of requests) controller.abort()
         const stopped = new Promise<void>((resolve, reject) =>
           server.close(error => (error === undefined ? resolve() : reject(new Error('Bots listener could not close safely.')))),
         )

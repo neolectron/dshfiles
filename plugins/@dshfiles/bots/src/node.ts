@@ -96,6 +96,8 @@ const ownRoot = async (root: string): Promise<() => Promise<void>> => {
 
 export interface BotsNodeServiceOptions extends Omit<BotsServerOptions, 'store'> {
   readonly storageRoot: string
+  /** Dispose composition-owned resources after HTTP/engine stop, before releasing exclusive storage ownership. */
+  readonly beforeStorageRelease?: () => Promise<void>
 }
 /** Standalone durable composition, without a DSH application, profile, Connection or provider-specific policy. */
 export async function startBotsNodeService(options: BotsNodeServiceOptions): Promise<{ readonly origin: string; readonly close: () => Promise<void> }> {
@@ -115,6 +117,7 @@ export async function startBotsNodeService(options: BotsNodeServiceOptions): Pro
     // Do not release ownership if storage cleanup is ambiguous.
     try {
       await server?.close()
+      if (release !== undefined) await options.beforeStorageRelease?.()
       await domain?.close()
       await ctx.fiber.dispose()
       await release?.()
@@ -131,6 +134,7 @@ export async function startBotsNodeService(options: BotsNodeServiceOptions): Pro
       closed ??= (async () => {
         try {
           await runtime.server.close()
+          await options.beforeStorageRelease?.()
           await runtime.domain.close()
           await ctx.fiber.dispose()
           await runtime.release()
