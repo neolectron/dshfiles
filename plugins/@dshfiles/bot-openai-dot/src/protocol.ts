@@ -67,7 +67,11 @@ export const roomSchema = z.object({
   app_source: z.string().max(80),
   aeon_id: identifier,
   members: z.array(z.object({ account_user_id: identifier, aeon_id: z.string().max(300).optional() })).max(16),
-  latest_messages: z.array(baselineSchema).max(32).optional().default([]),
+  latest_messages: z
+    .array(baselineSchema)
+    .max(32)
+    .nullish()
+    .transform(items => items ?? []),
 })
 export type Room = z.infer<typeof roomSchema>
 export const messageSchema = z.object({
@@ -78,7 +82,11 @@ export const messageSchema = z.object({
   request_id: z.string().max(300).nullable().optional(),
   deleted_at: timestamp.nullable().optional(),
   content: z.object({
-    text: z.string().max(32000).optional().default(''),
+    text: z
+      .string()
+      .max(32000)
+      .nullish()
+      .transform(text => text ?? ''),
     attachments: z.array(z.unknown()).max(128).optional().default([]),
     elicitation: z.unknown().optional(),
   }),

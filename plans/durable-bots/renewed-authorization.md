@@ -1,0 +1,27 @@
+# Renewed authorization: real browser/API read investigation
+
+The user authorized continuing on25October2026, after the earlier goal was stopped. This supersedes the historical statement that no further real read was authorized. It does not permit challenge bypasses or an agent restart of the shared DSH.
+
+## What was actually checked
+
+- One fresh Node GET to the same primary-Dot endpoint used only the explicitly selected existing DSH `codex_manuel` access capability. It was unexpired and received403 HTML, **`cf-mitigated: challenge`**, with a Cloudflare server marker, no redirect and no authentication header. The body was cancelled unread; there was no retry, token/cookie export, refresh or send. [Metadata-only receipt](</tmp/bots-renewed-read-dBUjs5/receipt.json>).
+- This is now a **confirmed edge browser challenge**, not evidence that OpenAI rejected that login's Dot grant. Cloudflare documents that exact header as its challenge marker: [official response detection](https://developers.cloudflare.com/cloudflare-challenges/challenge-types/challenge-pages/detect-response/).
+- The existing normal ChatGPT browser session returned200 for the session and primary-Dot APIs. Comparing one-way account/user fingerprints inside their respective trusted contexts confirmed **the same account and user** as the selected DSH login. No token or cookie left its owner/browser; no raw identity was returned.
+- The existing chat remains Yield. Normal browser reads use its actual first-party session and ordinary HTTPS requests, not user-agent/TLS spoofing, imported cookies, challenge solving, a replacement bot or another pooled account.
+- The adapter's actual response schemas were bundled into a private diagnostic function and run inside that normal browser context. Only statuses, schema paths, counts and booleans return. Credentials and transcript text never return to the agent or Node diagnostic. This proves browser-side protocol behavior, **not** a working Node transport or deployed DSH connection.
+
+## Real bugs exposed beyond the transport problem
+
+1. Session, primary, profile and room all returned200, but the actual room validator rejected `latest_messages: null`. This field represents an absent embedded baseline; the existing single-message baseline GET should handle it. A synthetic public-factory regression reproduced the failure before a narrow nullable-to-empty normalization fix. Missing/empty/1/32-item lists, malformed values, room membership and author guards remain tested.
+2. With that fixed, the recent-message endpoint also returned200, but the actual page validator rejected one `content.text: null` among32messages. All other defined text values were strings. A null/omitted text value is normalized to the existing empty-string behavior, rather than rejecting the whole page. Attachments and tombstones retain their existing unsupported/deleted notices; no new empty-text notice is invented. Both narrow fixes are complete, with malformed types/size limits and identity guards preserved.
+3. The adapter previously collapsed an explicit browser challenge into generic403. It now uses the existing `access-denied` code with a fixed message identifying the browser security check and leaving login compatibility unknown. No response body/header values are exposed, no new public DTO or retry is added, and the account denial latch remains effective.
+
+**After the fixes, the real read passes:** session, primary, profile, room and recent-message endpoints all return200; the actual source schemas validate all32 recent messages, `verifyRoom` accepts exact membership, the active profile matches primary selection, the single-message baseline endpoint validates, and querying after that baseline returns0messages. Both human and Dot authors are present. The discovered name is Yield. No transcript text, credential or cookie is returned and no message is sent. The provider package now passes **290tests**, strict types/build/Host import and scoped static checks (three existing fixture-helper lint warnings remain).
+
+[Private schema-only diagnostic and value-free result](</tmp/bots-browser-schema-proof-Xqnj7L/live-read-result.json>). These private scripts contain source validators and fixed API paths only, not credentials; no user profile was imported and no DSH bundle was activated.
+
+## What is still not established
+
+The direct Node request still encounters the edge challenge. Normal browser-session success and matching identity do not prove that a Codex OAuth grant is accepted by the Dot resource, nor that browser clearance can or should be copied to a service. Public [Beeper login source](https://github.com/beeper/chatgpt-dots/blob/05bfac9f682bf27e73d5c87755245031f556a066/pkg/connector/login.go) acquires ChatGPT web-session access, not Codex OAuth; its current [client changes](https://github.com/beeper/chatgpt-dots/compare/ee43cb5c2b8a27e0759d74fb14b24d749ce01fdb...05bfac9f682bf27e73d5c87755245031f556a066) do not provide an auth/discovery fix. Do not infer categorical OAuth incompatibility from those facts.
+
+No new real message has been sent during this renewed investigation. Do not consume a delivery test on a browser-only demonstration and call it a DSH backend test. The final product still needs its legitimate backend authorization/transport and current-GUI activation verified; the user's existing-DSH-login requirement remains in force.

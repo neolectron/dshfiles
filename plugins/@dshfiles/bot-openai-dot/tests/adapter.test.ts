@@ -83,7 +83,7 @@ function harness(handler?: Handler, accessToken = token) {
       return reference === 'secret:DOT_ACCESS' ? accessToken : sessionToken
     },
   })
-  return { adapter, calls, resolved, open: () => adapter.open({ config, signal: signal() }) }
+  return { adapter, calls, resolved, fetch: fetcher, open: () => adapter.open({ config, signal: signal() }) }
 }
 
 async function safeError(promise: Promise<unknown>, code: string) {
@@ -97,6 +97,7 @@ async function safeError(promise: Promise<unknown>, code: string) {
   expect(String(error)).not.toContain(token)
   expect(String(error)).not.toContain(sessionToken)
   expect(error).not.toHaveProperty('cause')
+  return error
 }
 
 describe('Dot protocol and identity boundaries', () => {
@@ -257,22 +258,85 @@ describe('Dot protocol and identity boundaries', () => {
     { ...room, members: [...room.members, { account_user_id: 'third-human' }] },
     { ...room, members: [{ account_user_id: 'bot-member-fixture', aeon_id: 'dot-fixture' }, { account_user_id: 'other-human' }] },
     { ...room, members: [{ account_user_id: 'same-member', aeon_id: 'dot-fixture' }, { account_user_id: 'same-member' }] },
-  ])('rejects wrong DM, source, Dot or account-member mapping', async body => {
-    await safeError(harness(({ url }) => (url.pathname === '/backend-api/messaging/rooms/room-fixture' ? json(body) : undefined)).open(), 'identity-mismatch')
+  ])('rejects wrong DM, source, Dot or account-member mapping before a null-baseline fallback', async body => {
+    const h = harness(({ url }) => (url.pathname === '/backend-api/messaging/rooms/room-fixture' ? json({ ...body, latest_messages: null }) : undefined))
+    await safeError(h.open(), 'identity-mismatch')
+    expect(h.calls.map(call => call.url.pathname)).toEqual([
+      '/backend-api/tbo/primary',
+      '/backend-api/tbo/by-thread/thread-fixture',
+      '/backend-api/messaging/rooms/room-fixture',
+    ])
   })
-  it('falls back to a single latest message baseline, refuses an empty room', async () => {
+  it.each([
+    { name: 'null', latest: null },
+    { name: 'missing', latest: undefined },
+    { name: 'empty', latest: [] },
+  ])('falls back to a single latest message baseline for $name embedded messages, refuses an empty room', async ({ latest }) => {
     const h = harness(({ url }) =>
       url.pathname.endsWith('/room-fixture')
-        ? json({ ...room, latest_messages: [] })
+        ? json({ ...room, latest_messages: latest })
         : url.search === '?limit=1'
           ? json({ items: [{ id: 'fallback-baseline', created_at: time() }] })
           : undefined,
     )
-    expect((await h.open()).bots[0]?.conversations[0]?.initialCursor).toBe('fallback-baseline')
+    const session = await h.open()
+    try {
+      expect(session.bots[0]?.conversations[0]?.initialCursor).toBe('fallback-baseline')
+      expect(h.calls.map(call => [call.url.pathname + call.url.search, call.init.method])).toEqual([
+        ['/backend-api/tbo/primary', 'GET'],
+        ['/backend-api/tbo/by-thread/thread-fixture', 'GET'],
+        ['/backend-api/messaging/rooms/room-fixture', 'GET'],
+        ['/backend-api/messaging/rooms/room-fixture/messages?limit=1', 'GET'],
+      ])
+    } finally {
+      await session.close()
+    }
     await safeError(
-      harness(({ url }) => (url.pathname.endsWith('/room-fixture') ? json({ ...room, latest_messages: [] }) : undefined)).open(),
+      harness(({ url }) => (url.pathname.endsWith('/room-fixture') ? json({ ...room, latest_messages: latest }) : undefined)).open(),
       'protocol-error',
     )
+  })
+  it.each([1, 32])('uses the newest of %i valid embedded baselines without fallback', async count => {
+    const h = harness(({ url }) =>
+      url.pathname.endsWith('/room-fixture')
+        ? json({ ...room, latest_messages: Array.from({ length: count }, (_, index) => ({ id: `baseline-${index}`, created_at: time(index) })) })
+        : undefined,
+    )
+    const session = await h.open()
+    try {
+      expect(session.bots[0]?.conversations[0]?.initialCursor).toBe(`baseline-${count - 1}`)
+      expect(h.calls).toHaveLength(3)
+    } finally {
+      await session.close()
+    }
+  })
+  it.each([
+    { name: 'string', latest: 'not-a-page' },
+    { name: 'object', latest: { items: [] } },
+    { name: 'oversized', latest: Array.from({ length: 33 }, (_, index) => ({ id: `baseline-${index}`, created_at: time(index) })) },
+    { name: 'missing item fields', latest: [{}] },
+    { name: 'invalid item timestamp', latest: [{ id: 'baseline', created_at: 'not-a-date' }] },
+    { name: 'invalid item identifier', latest: [{ id: '', created_at: time() }] },
+  ])('rejects $name embedded baselines without fallback', async ({ latest }) => {
+    const h = harness(({ url }) => (url.pathname.endsWith('/room-fixture') ? json({ ...room, latest_messages: latest }) : undefined))
+    await safeError(h.open(), 'protocol-error')
+    expect(h.calls).toHaveLength(3)
+  })
+  it('preserves unknown-author rejection after a null-baseline fallback', async () => {
+    const h = harness(({ url }) => {
+      if (url.pathname.endsWith('/room-fixture')) return json({ ...room, latest_messages: null })
+      if (url.search === '?limit=1') return json({ items: [{ id: 'fallback-baseline', created_at: time() }] })
+      if (url.searchParams.has('after')) return json({ items: [message('unknown-author', 'intruder')] })
+      return undefined
+    })
+    const session = await h.open()
+    try {
+      await safeError(session.poll({ ...request(), cursor: 'fallback-baseline' }), 'identity-mismatch')
+      expect(h.calls.filter(call => call.url.search === '?limit=1')).toHaveLength(1)
+      expect(h.calls.some(call => call.init.method === 'POST')).toBe(false)
+    } finally {
+      await session.close()
+    }
   })
   it('changes the stable reconnect binding if verified room member mapping changes', async () => {
     const original = await harness().open()
@@ -417,8 +481,83 @@ describe('Dot incoming messages and pagination', () => {
     expect(page.messages[1]).toMatchObject({ text: 'Bot text', notice: expect.stringContaining('nothing was approved'), nativeUrl: 'https://chatgpt.com/dots' })
     expect(JSON.stringify(page)).not.toContain('evil.invalid')
   })
+  it.each([
+    { name: 'null', text: null },
+    { name: 'empty', text: '' },
+    { name: 'omitted', text: undefined },
+  ])('normalizes $name message text without adding a notice', async ({ text }) => {
+    const h = harness(({ url }) => (url.searchParams.has('after') ? json({ items: [{ ...message(), content: { text } }] }) : undefined))
+    const session = await h.open()
+    try {
+      const page = await session.poll({ ...request(), cursor: 'baseline-fixture' })
+      expect(page.messages).toHaveLength(1)
+      expect(page.messages[0]).toMatchObject({ id: 'message-fixture', author: 'bot', text: '', notice: null, nativeUrl: null })
+      expect(page.hasMore).toBe(false)
+      expect(h.calls.at(-1)?.url.search).toBe('?limit=32&after=baseline-fixture')
+    } finally {
+      await session.close()
+    }
+  })
+  it.each([
+    {
+      name: 'attachment handoff',
+      attachments: [{ url: 'https://evil.invalid/private' }],
+      deletedAt: undefined,
+      notice: 'Unsupported attachment or approval. Open native ChatGPT to view or act; nothing was approved here.',
+      nativeUrl: 'https://chatgpt.com/dots',
+      updatedAt: now + 1000,
+    },
+    {
+      name: 'tombstone',
+      attachments: [],
+      deletedAt: time(5),
+      notice: 'This message was deleted in ChatGPT.',
+      nativeUrl: null,
+      updatedAt: now + 5000,
+    },
+  ])('preserves $name for null message text', async ({ attachments, deletedAt, notice, nativeUrl, updatedAt }) => {
+    const h = harness(({ url }) =>
+      url.searchParams.has('after') ? json({ items: [{ ...message(), content: { text: null, attachments }, deleted_at: deletedAt }] }) : undefined,
+    )
+    const session = await h.open()
+    try {
+      const page = await session.poll({ ...request(), cursor: 'baseline-fixture' })
+      expect(page.messages).toHaveLength(1)
+      expect(page.messages[0]).toMatchObject({ author: 'bot', text: '', notice, nativeUrl, updatedAt })
+      expect(JSON.stringify(page)).not.toContain('evil.invalid')
+    } finally {
+      await session.close()
+    }
+  })
+  it.each([
+    { name: 'object', text: {} },
+    { name: 'number', text: 42 },
+    { name: 'boolean', text: false },
+    { name: 'oversized', text: 'x'.repeat(32001) },
+  ])('rejects $name message text rather than normalizing it', async ({ text }) => {
+    const h = harness(({ url }) => (url.searchParams.has('after') ? json({ items: [{ ...message(), content: { text } }] }) : undefined))
+    const session = await h.open()
+    try {
+      await safeError(session.poll({ ...request(), cursor: 'baseline-fixture' }), 'protocol-error')
+    } finally {
+      await session.close()
+    }
+  })
+  it('preserves message text at the 32000-character limit', async () => {
+    const text = 'x'.repeat(32000)
+    const h = harness(({ url }) => (url.searchParams.has('after') ? json({ items: [{ ...message(), content: { text } }] }) : undefined))
+    const session = await h.open()
+    try {
+      const page = await session.poll({ ...request(), cursor: 'baseline-fixture' })
+      expect(page.messages[0]?.text).toBe(text)
+    } finally {
+      await session.close()
+    }
+  })
   it('rejects unknown message authors, malformed payloads and null checkpoints', async () => {
-    const unknown = await harness(({ url }) => (url.searchParams.has('after') ? json({ items: [message('unknown', 'intruder')] }) : undefined)).open()
+    const unknown = await harness(({ url }) =>
+      url.searchParams.has('after') ? json({ items: [{ ...message('unknown', 'intruder'), content: { text: null } }] }) : undefined,
+    ).open()
     await safeError(unknown.poll({ ...request(), cursor: 'baseline' }), 'identity-mismatch')
     const malformed = await harness(({ url }) =>
       url.searchParams.has('after') ? json({ items: [{ ...message(), created_at: 'garbage' }] }) : undefined,
@@ -557,6 +696,111 @@ describe('Dot auth, HTTP and credential confinement', () => {
     const h = harness(() => json({ details: `${token} ${sessionToken}` }, status))
     await safeError(h.open(), code)
     expect(h.calls).toHaveLength(1)
+  })
+  it.each([
+    [
+      403,
+      'challenge',
+      'access-denied',
+      'ChatGPT stopped this request at a Cloudflare browser security check. Compatibility of this login with Dot is unknown. Use native ChatGPT; no bypass is attempted.',
+    ],
+    [403, undefined, 'access-denied', 'ChatGPT denied access or requested a browser challenge. Use native ChatGPT; no bypass is attempted.'],
+    [403, 'Challenge', 'access-denied', 'ChatGPT denied access or requested a browser challenge. Use native ChatGPT; no bypass is attempted.'],
+    [403, 'challenge-extra', 'access-denied', 'ChatGPT denied access or requested a browser challenge. Use native ChatGPT; no bypass is attempted.'],
+    [429, 'challenge', 'rate-limited', 'ChatGPT rate limited this connection; try later.'],
+    [500, 'challenge', 'unavailable', 'ChatGPT is unavailable; try later.'],
+    [400, 'challenge', 'protocol-error', 'ChatGPT returned an unsupported response. Use native ChatGPT.'],
+  ] as const)('classifies HTTP %i with marker %s without reading or exposing private response data', async (status, marker, code, expectedMessage) => {
+    let reads = 0
+    let cancellations = 0
+    const body = new ReadableStream<Uint8Array>(
+      {
+        pull(controller) {
+          reads++
+          controller.enqueue(new TextEncoder().encode('PRIVATE_BODY_CANARY'))
+          controller.close()
+        },
+        cancel() {
+          cancellations++
+        },
+      },
+      { highWaterMark: 0 },
+    )
+    const headers = new Headers({ 'content-type': 'text/html', 'x-private-header': 'PRIVATE_HEADER_CANARY' })
+    if (marker !== undefined) headers.set('cf-mitigated', marker)
+    const h = harness(() => new Response(body, { status, headers }))
+    const error = await safeError(h.open(), code)
+    expect(error).toMatchObject({ message: expectedMessage })
+    const exposed = `${String(error)} ${JSON.stringify(error)}`
+    expect(exposed).not.toContain('PRIVATE_BODY_CANARY')
+    expect(exposed).not.toContain('PRIVATE_HEADER_CANARY')
+    expect(reads).toBe(0)
+    expect(cancellations).toBe(1)
+    expect(h.calls.map(call => [call.url.pathname, call.init.method])).toEqual([['/backend-api/tbo/primary', 'GET']])
+  })
+  it('does not treat a challenge marker on a successful response as an access denial', async () => {
+    const h = harness(({ url }) =>
+      url.pathname === '/backend-api/tbo/primary'
+        ? new Response(JSON.stringify(primary), { headers: { 'content-type': 'application/json', 'cf-mitigated': 'challenge' } })
+        : undefined,
+    )
+    const session = await h.open()
+    expect(session.bots[0]?.remoteId).toBe('dot-fixture')
+    await session.close()
+  })
+  it.each(['GET', 'POST'])('stops account mode after a %s challenge without refresh or repeating any request', async method => {
+    let denied = false
+    let ownerReads = 0
+    let bodyReads = 0
+    let cancellations = 0
+    const h = harness(({ init }) => {
+      if (!denied || init.method !== method) return undefined
+      return new Response(
+        new ReadableStream<Uint8Array>(
+          {
+            pull(controller) {
+              bodyReads++
+              controller.enqueue(new TextEncoder().encode('PRIVATE_BODY_CANARY'))
+              controller.close()
+            },
+            cancel() {
+              cancellations++
+            },
+          },
+          { highWaterMark: 0 },
+        ),
+        { status: 403, headers: { 'cf-mitigated': 'challenge', 'x-private-header': 'PRIVATE_HEADER_CANARY' } },
+      )
+    })
+    const adapter = createDotAdapter({
+      now: () => now,
+      fetch: h.fetch,
+      accountAccess: {
+        async readAccessToken(accountId) {
+          expect(accountId).toBe('synthetic-selected-account')
+          ownerReads++
+          return token
+        },
+      },
+    })
+    const session = await adapter.open({ config: { accountId: 'synthetic-selected-account' }, signal: signal() })
+    try {
+      denied = true
+      const error = await safeError(method === 'POST' ? session.send(request()) : session.poll({ ...request(), cursor: 'baseline' }), 'access-denied')
+      expect(error).toMatchObject({ message: expect.stringContaining('Compatibility of this login with Dot is unknown.') })
+      expect(`${String(error)} ${JSON.stringify(error)}`).not.toContain('PRIVATE_')
+      const before = { calls: h.calls.length, ownerReads }
+      await safeError(session.poll({ ...request(), cursor: 'baseline' }), 'unavailable')
+      await safeError(session.send(request()), 'unavailable')
+      await safeError(session.reconcile(request()), 'unavailable')
+      expect({ calls: h.calls.length, ownerReads }).toEqual(before)
+      expect(h.calls.filter(call => call.init.method === 'POST')).toHaveLength(method === 'POST' ? 1 : 0)
+      expect(h.calls.every(call => call.url.pathname.startsWith('/backend-api/') && !new Headers(call.init.headers).has('cookie'))).toBe(true)
+      expect(bodyReads).toBe(0)
+      expect(cancellations).toBe(1)
+    } finally {
+      await session.close()
+    }
   })
   it('refreshes on 401 in memory, applies only session cookie at auth endpoint and reuses stable UUID', async () => {
     let posts = 0

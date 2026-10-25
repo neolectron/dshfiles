@@ -155,7 +155,14 @@ export class DotHttp {
       if (!response.ok) {
         await response.body?.cancel()
         if (response.status === 401) throw fail('auth-required')
-        if (response.status === 403) throw fail('access-denied')
+        if (response.status === 403) {
+          if (response.headers.get('cf-mitigated') === 'challenge')
+            throw new BotAdapterError(
+              'access-denied',
+              'ChatGPT stopped this request at a Cloudflare browser security check. Compatibility of this login with Dot is unknown. Use native ChatGPT; no bypass is attempted.',
+            )
+          throw fail('access-denied')
+        }
         if (response.status === 429) throw fail('rate-limited')
         throw fail(sending ? 'delivery-unknown' : response.status >= 500 ? 'unavailable' : 'protocol-error')
       }
