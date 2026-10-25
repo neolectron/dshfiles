@@ -2,7 +2,11 @@
 
 The first version implements provider-neutral Bots, durable messaging and an unofficial Dot protocol adapter, but it is **not a complete live product**. The user now requires being able to chat with their existing Dot in this GUI. Passing fixtures or preparing a release is not acceptance. Current behavior and limits remain documented in the [guide](../../docs/bots.md), [Bots README](../../plugins/@dshfiles/bots/README.md) and [Dot README](../../plugins/@dshfiles/bot-openai-dot/README.md).
 
-## Current continuation: the in-DSH browser flow is implemented
+## Current decision: no backend browser; feasibility before implementation
+
+**Resume here:** [browser-free PoC results](http-only-poc.md). The user explicitly rejected the managed-browser solution. Do not continue its deployment, container work or compatibility-preparation path. Current proofs: official API host returns normal401JSON; private Dot edge still returns403HTML with an explicit Cloudflare challenge; the selected existing login is now locally expired, so a new authenticated Dot request was not sent.21controlled browser-free adapter/owner tests pass. Official Workspace Agents cannot retrieve replies, and SIWC inference explicitly does not grant access to ChatGPT conversations/account context. No real Yield send/reply has been proved. Removing the security barrier would eliminate most browser machinery, but credential scope and real messaging would still need proof. No live installation change occurred.
+
+## Historical continuation: the in-DSH browser flow was implemented, then rejected
 
 **Resume here:** [in-GUI enrollment milestone and activation steps](in-gui-enrollment.md). The full real-scratch-DSH synthetic journey now passes twice: consent, real isolated Chromium raster/input, manual completion, retained browser, then actual Dot adapter connect/send/reply through one Node outbox. No ChatGPT tab or desktop helper is required by this implementation. Latest source: Bots155tests; Dot457tests including12real Chrome tests; normal Node app11tests. Live Manuel activation, real Yield authorization and browser-container provisioning are still unfinished. No new real message or live DSH restart occurred.
 
