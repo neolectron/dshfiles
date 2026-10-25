@@ -6,7 +6,7 @@ The user rejected any backend browser and requested small feasibility proofs bef
 
 ## Latest authorized account comparison: Sylvain
 
-The user explicitly authorized `codex_ocx_sylvain` instead of the earlier Manuel selection. The real ordinary-HTTP proof made exactly one authenticated Dot-primary GET. It returned403HTML with the explicit Cloudflare challenge in58ms. Sylvain's access token was locally usable before and after, and a private SHA-256 comparison confirmed the access-token material was unchanged; only that boolean was reported, never the digest or bearer. Native identity metadata reported signed-in both before and after. No message, OAuth refresh, logout/revoke endpoint or credential write occurred.
+The user explicitly authorized `codex_ocx_sylvain` instead of the earlier Manuel selection. The real ordinary-HTTP proof made exactly one authenticated Dot-primary GET. It returned403HTML with the explicit Cloudflare challenge in58ms. Sylvain's access token was locally usable before and after, and a private SHA-256 comparison confirmed the access-token material was unchanged; only that boolean was reported, never the digest or bearer. Native identity metadata reported signed-in both before and after. After the Dot request, the native serving-account ledger also records a successful Codex model request for this same Sylvain account in the current conversation. This independently demonstrates post-test Codex access, not future refresh-grant validity. No Dot message, OAuth refresh, logout/revoke endpoint or credential write was performed by the probe; ordinary DSH model traffic is separate.
 
 Receipt: `/tmp/yield-direct-http-poc-MYzEhl/receipt.json`. Reproduction:
 
