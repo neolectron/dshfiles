@@ -2,7 +2,11 @@
 
 The first version implements provider-neutral Bots, durable messaging and an unofficial Dot protocol adapter, but it is **not a complete live product**. The user now requires being able to chat with their existing Dot in this GUI. Passing fixtures or preparing a release is not acceptance. Current behavior and limits remain documented in the [guide](../../docs/bots.md), [Bots README](../../plugins/@dshfiles/bots/README.md) and [Dot README](../../plugins/@dshfiles/bot-openai-dot/README.md).
 
-## Current decision: no backend browser; feasibility before implementation
+## Current proof: Yield delegates native DSH conversations
+
+**Resume here:** [genuine Yield delegation PoC](yield-delegation-poc.md). The user accepts talking to Yield in OpenAI's UI and doing task conversations in DSH; no Codex mirror is needed. Genuine Yield attempted the harmless connected-computer check, but reported its local task executor could not start because the workspace is out of credits. No check command or DSH task ran through that route. Yield reports direct installed MCP tools are available without starting a Codex task; the actual account UI offers Add custom MCP server. Next is choosing a reachable carrier for a minimal read-only MCP tool, not a full bridge. No backend service/tunnel/profile change has been made.
+
+## Earlier decision: no backend browser; feasibility before implementation
 
 **Resume here:** [browser-free PoC results](http-only-poc.md). The user explicitly rejected the managed-browser solution. Do not continue its deployment, container work or compatibility-preparation path. Latest proof uses the user's explicitly selected Sylvain account: one authenticated ordinary-HTTP Dot GET returned403HTML with an explicit Cloudflare challenge; the access token stayed locally usable and unchanged before/after, and native identity remained signed in. No refresh/logout/writes occurred. Earlier Manuel's token was already expired locally; Marwan was not used for provider calls. The official API control returns normal401JSON without a browser challenge.21controlled browser-free adapter/owner tests pass. Official Workspace Agents cannot retrieve replies, and SIWC inference explicitly does not grant access to ChatGPT conversations/account context. No real Yield send/reply has been proved. Removing the security barrier would eliminate most browser machinery, but credential scope and real messaging would still need proof. No live installation change occurred.
 
