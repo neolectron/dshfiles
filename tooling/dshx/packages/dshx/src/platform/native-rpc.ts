@@ -24,7 +24,9 @@ export const nativeRpcRequestSchema = z.union([
     .object({
       namespace: z.literal('session'),
       method: z.literal('create'),
-      args: sessionRequest(z.object({ cwd: z.string().max(4096).optional(), agentPreset: z.string().max(128).optional() }).strict()),
+      args: sessionRequest(
+        z.object({ sessionId: sessionIdSchema.optional(), cwd: z.string().max(4096).optional(), agentPreset: z.string().max(128).optional() }).strict(),
+      ),
     })
     .strict(),
   z

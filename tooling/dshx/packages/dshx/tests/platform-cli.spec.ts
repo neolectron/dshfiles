@@ -43,6 +43,63 @@ function clientWith(rpc: DshPlatformTransport['rpc']): DshPlatformClient {
 }
 
 describe('DSH platform CLI', () => {
+  it('preserves stable native identities, validates them, and retains the actual created Session', async () => {
+    const rpc = vi.fn<DshPlatformTransport['rpc']>(async (_namespace, method) => {
+      if (method === 'create') return { sessionId: 'actual-session', agentPreset: 'operator-preset' }
+      if (method === 'prompt') return { accepted: true }
+      throw new Error(`Unexpected RPC ${method}`)
+    })
+    const client = clientWith(rpc)
+    await expect(client.sessions.create({ sessionId: 'requested-session', cwd: '/operator/project', agentPreset: 'operator-preset' })).resolves.toEqual({
+      sessionId: 'actual-session',
+      agentPreset: 'operator-preset',
+    })
+    expect(rpc).toHaveBeenLastCalledWith('session', 'create', {
+      request: { sessionId: 'requested-session', cwd: '/operator/project', agentPreset: 'operator-preset' },
+    })
+    const requestId = '8f745f7d-03ba-4594-bf9a-bd9714c7a502'
+    const controller = new AbortController()
+    await client.sessions.prompt('actual-session', 'One admission', 'queue', controller.signal, { requestId })
+    await client.sessions.prompt('actual-session', 'One admission', 'queue', controller.signal, { requestId })
+    expect(rpc).toHaveBeenLastCalledWith(
+      'session',
+      'prompt',
+      { request: { sessionId: 'actual-session', requestId, mode: 'queue', content: [{ type: 'text', text: 'One admission' }] } },
+      controller.signal,
+    )
+    await client.sessions.prompt('actual-session', 'Existing caller', 'queue')
+    expect(rpc).toHaveBeenLastCalledWith(
+      'session',
+      'prompt',
+      { request: { sessionId: 'actual-session', requestId: expect.any(String), mode: 'queue', content: [{ type: 'text', text: 'Existing caller' }] } },
+      undefined,
+    )
+    const admitted = rpc.mock.calls.length
+    await expect(client.sessions.create({ sessionId: '' })).rejects.toThrow()
+    await expect(client.sessions.prompt('actual-session', 'Invalid admission', 'queue', undefined, { requestId: 'not-a-uuid' })).rejects.toThrow()
+    expect(rpc).toHaveBeenCalledTimes(admitted)
+  })
+
+  it('normalizes native inbox counts without manufacturing missing or cached sequence evidence', async () => {
+    const row = { sessionId: 'session-1', updatedAt: 0, running: false, blank: false, agentAvailable: true }
+    const client = clientWith(async () => ({
+      items: [
+        { ...row, projections: { kind: 'sequenced', asOfSeq: 9, values: { inbox: { 'next-turn': [{ content: [] }], 'next-step': [] } } } },
+        { ...row, sessionId: 'cached', projections: { kind: 'cached', asOfSeq: 12, values: { inbox: { 'next-turn': [], 'next-step': [] } } } },
+        { ...row, sessionId: 'absent' },
+        { ...row, sessionId: 'invalid', projections: { kind: 'sequenced', asOfSeq: 9, values: { inbox: { 'next-turn': [], 'next-step': 'invalid' } } } },
+      ],
+    }))
+    const rows = await client.sessions.list(['inbox'])
+    expect(rows[0]).toMatchObject({ pendingMessages: 1, pendingMessagesAsOfSeq: 9 })
+    expect(rows[1]).toMatchObject({ pendingMessages: 0 })
+    expect(rows[1]).not.toHaveProperty('pendingMessagesAsOfSeq')
+    for (const item of rows.slice(2)) {
+      expect(item).not.toHaveProperty('pendingMessages')
+      expect(item).not.toHaveProperty('pendingMessagesAsOfSeq')
+    }
+  })
+
   it('parses platform command groups and scoped options', () => {
     expect(parseCliArgs(['sessions', 'history', 'session-1', '--max', '50', '--json'])).toMatchObject({
       command: 'sessions',

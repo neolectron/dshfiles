@@ -6,12 +6,20 @@ import { isIPv4 } from 'node:net'
 import { z } from 'zod'
 import WebSocket, { type RawData } from 'ws'
 import { createDshxApiCaller, type DshxApiCall } from './dshx-api.js'
+import { nativeRpcRequestSchema } from './native-rpc.js'
 
 const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
   z.union([z.string(), z.number().finite(), z.boolean(), z.null(), z.array(jsonValueSchema), z.record(z.string(), jsonValueSchema)]),
 )
 
 export type JsonValue = string | number | boolean | null | readonly JsonValue[] | { readonly [key: string]: JsonValue }
+
+// Native dsh-agent/types InboxWireState: only counts cross the normalized summary boundary.
+const inboxProjectionSchema = z.object({
+  kind: z.enum(['cached', 'sequenced']),
+  asOfSeq: z.number().safe().min(-1),
+  values: z.object({ inbox: z.object({ 'next-turn': z.array(jsonValueSchema), 'next-step': z.array(jsonValueSchema) }) }),
+})
 
 const sessionSummarySchema = z.object({
   agentAvailable: z.boolean(),
@@ -283,6 +291,10 @@ export interface SessionSummary {
   readonly origin?: 'subagent'
   readonly cwd?: string
   readonly projections?: JsonValue
+  /** Pending native inbox messages, absent when that projection was unavailable or invalid. */
+  readonly pendingMessages?: number
+  /** Inbox watermark comparable to history only for a live, sequenced projection. */
+  readonly pendingMessagesAsOfSeq?: number
 }
 
 export interface SessionSearchItem {
@@ -456,13 +468,25 @@ export interface DshPlatformClient {
     }>
     /** The composed finder when the installed Memory plugin serves it; see {@link ThreadFinderAttempt}. */
     findThreads(input: ThreadFinderCallInput): Promise<ThreadFinderAttempt>
-    create(input: { readonly cwd?: string; readonly agentPreset?: string }): Promise<{ readonly sessionId: string; readonly agentPreset?: string }>
+    /** A requested blank identity may be replaced by the Host; always retain the returned identity. */
+    create(input: {
+      readonly sessionId?: string
+      readonly cwd?: string
+      readonly agentPreset?: string
+    }): Promise<{ readonly sessionId: string; readonly agentPreset?: string }>
     fork(sessionId: string, atSeq?: number): Promise<{ readonly sessionId: string }>
     cancel(sessionId: string): Promise<{ readonly accepted: true }>
     rename(sessionId: string, title: string): Promise<{ readonly title: string; readonly seq: number }>
     archive(sessionId: string): Promise<{ readonly archivedSessionIds: readonly string[] }>
     unarchive(sessionId: string): Promise<{ readonly archivedSessionIds: readonly string[] }>
-    prompt(sessionId: string, text: string, mode: 'queue' | 'steer', signal?: AbortSignal): Promise<{ readonly accepted: true }>
+    /** A stable requestId lets a caller retry one admission without enqueueing the same prompt twice. */
+    prompt(
+      sessionId: string,
+      text: string,
+      mode: 'queue' | 'steer',
+      signal?: AbortSignal,
+      options?: { readonly requestId?: string },
+    ): Promise<{ readonly accepted: true }>
     page(sessionId: string, throughSeq: number, beforeSeq?: number, maxMessages?: number): Promise<SessionPage>
     history(sessionId: string, maxMessages?: number): Promise<SessionPage>
     cursor(sessionId: string): Promise<number>
@@ -556,7 +580,8 @@ const loopbackLaunchUrl = (
 
 function mapSession(value: unknown, archived?: boolean): SessionSummary {
   const parsed = sessionSummarySchema.parse(value)
-  const summary = {
+  const inbox = inboxProjectionSchema.safeParse(parsed.projections).data
+  const summary: { -readonly [Key in keyof SessionSummary]: SessionSummary[Key] } = {
     sessionId: parsed.sessionId,
     updatedAt: parsed.updatedAt,
     running: parsed.running,
@@ -567,6 +592,8 @@ function mapSession(value: unknown, archived?: boolean): SessionSummary {
     ...(parsed.cwd === undefined ? {} : { cwd: parsed.cwd }),
     ...(parsed.projections === undefined ? {} : { projections: parsed.projections }),
   }
+  if (inbox !== undefined) summary.pendingMessages = inbox.values.inbox['next-turn'].length + inbox.values.inbox['next-step'].length
+  if (inbox?.kind === 'sequenced') summary.pendingMessagesAsOfSeq = inbox.asOfSeq
   if (archived === undefined) return summary
   return { ...summary, archived }
 }
@@ -800,9 +827,8 @@ function makeTypedClient(transport: DshPlatformTransport): DshPlatformClient {
         return { items: result.items, hasMore: result.hasMore }
       },
       create: async input => {
-        const parsed = z
-          .object({ sessionId: z.string(), agentPreset: z.string().optional() })
-          .parse(await transport.rpc('session', 'create', { request: input }))
+        nativeRpcRequestSchema.parse({ namespace: 'session', method: 'create', args: { request: input } })
+        const parsed = z.object({ sessionId: z.string(), agentPreset: z.string().optional() }).parse(await transport.rpc('session', 'create', { request: input }))
         return parsed.agentPreset === undefined ? { sessionId: parsed.sessionId } : { sessionId: parsed.sessionId, agentPreset: parsed.agentPreset }
       },
       fork: async (sessionId, atSeq) =>
@@ -826,13 +852,14 @@ function makeTypedClient(transport: DshPlatformTransport): DshPlatformClient {
           .parse(await transport.rpc('workspace', 'unarchiveSession', { request: { sessionId } }))
         return { archivedSessionIds: result.archivedSessionIds }
       },
-      prompt: async (sessionId, text, mode, signal) => {
+      prompt: async (sessionId, text, mode, signal, options) => {
         const request = {
-          requestId: randomUUID(),
+          requestId: options?.requestId ?? randomUUID(),
           sessionId,
           mode,
           content: [{ type: 'text', text }],
         }
+        nativeRpcRequestSchema.parse({ namespace: 'session', method: 'prompt', args: { request } })
         return z.object({ accepted: z.literal(true) }).parse(await transport.rpc('session', 'prompt', { request }, signal))
       },
       page,
