@@ -18,7 +18,15 @@ The interrupted turn was recovered: clean Git workspace at d6ca2077, no active b
 
 The prompt's multi-paragraph input was submitted by the Dot composer as separate UI messages because newline acts as Send. The complete bounded instructions and final restrictions were then sent and verified; subsequent inquiry used one line and explicit Send. This is recorded as papercut `p_2641369933`, not hidden as a single API request. Only the one harmless local-check attempt was requested; no automatic retry was made.
 
-## Resume here
+## User concern and routing alternatives
+
+The user declined selecting an MCP carrier for now: a voluntary tool could be forgotten or skipped by subagents. Do not proceed with MCP provisioning on the assumption that a transport solves routing reliability. The requirement is deterministic handoff, not merely an extra tool.
+
+The official [Hooks guide](https://learn.chatgpt.com/docs/hooks.md) documents SessionStart/UserPromptSubmit/SubagentStart/PreToolUse events for supported local Codex execution, but explicitly says cloud-orchestrated Dots do not load local/plugin command hooks even when tools run locally. Enterprise managed remote MCP hooks are a different administrative feature; personal accounts do not use them. Missing/erroring MCP hook callbacks can fail open. Therefore a local hook is an investigation candidate, NOT an established way to redirect every genuine Dot-created task or child. Native cloud_threads → custom DSH executor selection is not documented by the sources checked.
+
+A GitHub-issue/queue handoff can make dispatch/retries/idempotency deterministic once a brief is submitted, but does not guarantee that Yield decides to submit the brief. A transcript/file watcher or emulated Codex backend would be unofficial, larger and brittle; do not present either as a clean first proof. No such mechanism was implemented. Await a decision about whether to investigate actual local-task launch events (still blocked by the reported task credit prerequisite), accept an explicit handoff action, or defer until a supported native executor extension exists.
+
+## Earlier proposed next steps — not authorized to provision yet
 
 1. Choose a reachable carrier for a read-only MCP health tool: existing user-owned HTTPS hosting, or the official private Secure MCP Tunnel. Do not publish the DSH owner API or hand Yield a tokenized GUI URL/cookie. Do not reuse unrelated installed plugin authority.
 2. Private tunnel prerequisites are a Platform runtime key/tunnel identity and the required Platform/workspace permission. No secret aliases were available in this workspace; do not hunt account files or echo a key. Any new credentials must stay operator-side and referenced through supported secret handling.
