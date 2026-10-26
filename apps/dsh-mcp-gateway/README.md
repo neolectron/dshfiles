@@ -4,7 +4,7 @@
 
 A normal Node22.23.3 process exposing a **scoped task-management API** for one existing local DSH runtime. DSH owns the conversations, agent execution, tools, models and subagents. The gateway owns only authentication, grants and a durable admission/idempotency ledger. It does not run a second agent engine, import Codex chats, call private Dot endpoints, or require a backend browser.
 
-The intended first client is genuine Yield, but nothing in the protocol depends on OpenAI. The gateway and dedicated private tunnel now run as enabled user services, and a real local native task has completed. Genuine Yield is **not connected**: the user chose to keep the tunnel private and declined workspace access. Follow the [deployment decision](docs/local-deployment.md) and [private-access findings](docs/private-access-options.md), not the earlier source-only milestone. The screenshot above is explicitly the synthetic-provider scratch proof.
+**Genuine Yield is connected.** After the user's explicit workspace approval, the dedicated tunnel was associated with Incentive and DSH Tasks was personally installed, not workspace-published. Yield successfully called health and read the real native probe's completed output. See [observed cloud acceptance and limits](docs/cloud-acceptance.md) and the [operator deployment guide](docs/local-deployment.md). Cloud write actions were discovered but not exercised in this acceptance. The screenshot above remains explicitly the earlier synthetic-provider scratch proof.
 
 ## Tools
 

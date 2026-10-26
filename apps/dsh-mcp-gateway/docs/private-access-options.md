@@ -1,5 +1,7 @@
 # Private access for the existing Yield
 
+**Historical constraint, superseded:** the user later explicitly approved the Incentive workspace association. The existing tunnel was connected and genuine Yield health/read calls succeeded; see [current cloud acceptance](cloud-acceptance.md). No public HTTPS OAuth alternative was built. The findings below remain valid analysis of the earlier no-workspace-association requirement, not a current instruction to undo the authorized connection.
+
 Read-only findings,26October2026. The user chose **keep private**: no Incentive workspace grant and no Yield activation. The later request to continue was treated as investigation within that constraint, not permission to reverse it. The deployed gateway/tunnel and their permissions were left unchanged.
 
 ## Result

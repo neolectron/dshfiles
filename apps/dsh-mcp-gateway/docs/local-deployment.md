@@ -2,7 +2,7 @@
 
 ## Current state —26October2026
 
-**The local gateway and dedicated OpenAI tunnel run as enabled user services. Genuine Yield is not connected yet.** ChatGPT rejected connector creation before any command reached this tunnel. The user explicitly chose to keep it private: do not grant the Incentive workspace access or activate Yield. See the [private-access findings](private-access-options.md) for the read-only continuation.
+**Genuine Yield is connected through the enabled local gateway and dedicated OpenAI tunnel.** The user explicitly approved Incentive workspace association after the earlier keep-private decision. The personal DSH Tasks plugin was installed without workspace publication. Yield's actual health call and existing-native-task read succeeded; see [observed cloud acceptance and limits](cloud-acceptance.md). The earlier denial and private-only research below are historical context, not a pending permission question.
 
 Published topics:
 
@@ -34,17 +34,19 @@ No keys, environment-file contents, owner cookies, tunnel identifiers or organiz
 5. Tunnel `/readyz` returned200 `ready`; component health showed successful control-plane polling, zero consecutive failures, OAuth metadata intentionally not advertised, and no Harpoon targets.
 6. ChatGPT's normal custom-MCP UI was configured for this dedicated tunnel, with no end-user OAuth because local bearer injection remains enforced. Creation was rejected: "The MCP server denied access. Check your authentication settings and, if using a tunnel, its workspace access." At that point the tunnel queue/dispatcher still showed zero forwarded commands, so no genuine cloud health/tool call was proved.
 
+7. After the new explicit approval, the saved tunnel table confirmed Incentive association and preserved organization scope; DSH Tasks connected personally with all six expected tools. Genuine Yield's health returned ready=true/project=dshfiles, and its read of the existing real native probe returned completed/the exact marker. Cumulative accepted delivery progressed5→10→14 with HTTP200 and zero terminal delivery failures; see [the acceptance record](cloud-acceptance.md). Cloud create/send/cancel were not exercised.
+
 The wider repository's pre-existing feature-catalog failures were not rewritten or described as fixed. These are scoped deployment proofs, not a globally clean release gate.
 
 ## Why workspace approval is required
 
-Yield currently lives in the Incentive ChatGPT workspace. The new tunnel is scoped to the owner's personal Platform organization **without an Incentive workspace grant**. It was deliberately kept separate from the existing read-only Discord tunnel.
+Yield lives in the Incentive ChatGPT workspace. The dedicated DSH tunnel now retains its original Platform organization scope **and the explicitly authorized Incentive workspace association**. It remains separate from the existing read-only Discord tunnel.
 
 Binding it to Incentive may make the transport reachable to other authorized workspace members. V1's injected gateway key represents the permitted tunnel population; it is not individual-user authentication. A personally installed plugin is not sufficient evidence that every transport caller is individually isolated.
 
-The user explicitly selected **keep it private**. The earlier approval question is resolved, not pending. Do not grant Incentive access or activate Yield. The later request to continue authorized private-only investigation; it did not reverse that choice.
+The user first selected keep-private and authorized read-only research. They subsequently explicitly changed that decision: **"workspace it is then."** Only the dedicated DSH tunnel was updated. The DSH Tasks plugin was created/connected through personal settings, retained in development, and not published to the workspace. Genuine Yield then returned actual health and completed-native-probe results. [Cloud acceptance](cloud-acceptance.md) records the transport evidence and untested write-action boundary.
 
-No workspace grant, existing-tunnel edit, anonymous MCP access or authentication bypass was applied after the denial. [Private-access findings](private-access-options.md) distinguish the tunnel eligibility gap from a possible owner-only OAuth HTTPS architecture. Neither a new public endpoint nor an authentication system has been approved or implemented. Do not claim cloud success merely because polling is healthy.
+No anonymous MCP access, DSH owner API export, Discord change, new public endpoint or authentication bypass was introduced. [Private-access findings](private-access-options.md) retain the earlier constrained investigation; its alternative OAuth architecture was not built. Polling alone is still not a tool-call proof; this deployment additionally has genuine product results and accepted request/response delivery.
 
 ## Operator commands
 

@@ -2,7 +2,7 @@
 
 ## Current result —26October2026
 
-**Gateway deployed, real local native task verified, dedicated OpenAI tunnel healthy; genuine Yield blocked at a workspace-permission gate.** Both topics are pushed. Resume at the [current deployment decision](../../apps/dsh-mcp-gateway/docs/local-deployment.md) and [private-access findings](../../apps/dsh-mcp-gateway/docs/private-access-options.md). The user explicitly chose keep-private: no Incentive workspace grant or Yield activation. Read-only continuation found no verified supported tunnel-association bypass; a separately authorized owner-only OAuth HTTPS architecture is documented, not implemented. No DSH/Discord restart, core patch or public DSH owner API exposure occurred. The sections below retain the earlier source milestone evidence as history, not current installation instructions.
+**Genuine Yield is connected: health and existing-native-task read acceptance passed.** After explicit new approval, only the dedicated DSH tunnel received Incentive association; DSH Tasks was personally installed, not workspace-published. See [observed cloud acceptance and limits](../../apps/dsh-mcp-gateway/docs/cloud-acceptance.md) and [operator deployment](../../apps/dsh-mcp-gateway/docs/local-deployment.md). Yield returned ready=true/project=dshfiles and completed/the exact real native probe marker. Accepted tunnel delivery progressed5→10→14 with zero terminal delivery failures. Cloud create/send/cancel remain unexercised; the historical next-step note below is not proof of those actions. No DSH/Discord restart, core patch, public endpoint or owner API exposure occurred. The sections below retain the source milestone evidence as history.
 
 ## Boundary
 
