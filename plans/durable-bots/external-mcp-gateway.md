@@ -2,7 +2,7 @@
 
 ## Current result —26October2026
 
-**Source milestone built and verified; cloud deployment/genuine Yield acceptance not yet performed.** See the [operator guide](../../apps/dsh-mcp-gateway/README.md). User scope: health plus create/send/read/list/cancel for native DSH tasks, with no Codex mirror, private Dot API or backend browser. No live DSH restart, core patch, serving-checkout/profile mutation, provider-account operation or public listener/tunnel occurred.
+**Gateway deployed, real local native task verified, dedicated OpenAI tunnel healthy; genuine Yield blocked at a workspace-permission gate.** Both topics are pushed. Resume at the [current deployment and pending approval](../../apps/dsh-mcp-gateway/docs/local-deployment.md). The user must choose whether to grant the Incentive workspace access; do not infer permission from the earlier general setup authorization. No DSH/Discord restart, core patch or public DSH owner API exposure occurred. The sections below retain the earlier source milestone evidence as history, not current installation instructions.
 
 ## Boundary
 
@@ -59,7 +59,7 @@ The SDK1.30.0 Node transport wrapper callback/accessor declarations conflict wit
 
 Maintain-verify-dsh trigger review applies to the new journey/generator input. New app has no plugin catalog; a reserved orphan plugin-scenario tag was corrected to an ordinary tag. Scoped real journey is green and owner generation is reconciled. **Global catalog hygiene still has60unrelated existing errors**, recorded in `/tmp/dsh-mcp-gateway-feature-hygiene.log`; no gateway entry remains. No shared boot/navigation helper changed, so no unrelated all-plugin smoke repetition was performed. SDK file-wide baseline lint warnings outside new code were not rewritten. No claim of a globally clean repository release gate.
 
-## Resume here: private cloud connection
+## Historical cloud handoff — superseded by the current deployment guide
 
 Cloud Yield's localhost is not this computer. The gateway can remain next to DSH on loopback; an OpenAI Secure MCP Tunnel runs here and supplies the outbound authenticated HTTPS path. This is preferred for the private first proof; public stable HTTPS is the interoperable alternative for other clients/public distribution. A separately hosted gateway still needs a secured path to this local runtime.
 
