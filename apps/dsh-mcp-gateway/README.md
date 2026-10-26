@@ -117,7 +117,7 @@ Confirm this schema/flag shape with the exact installed `tunnel-client help samp
 
 A static local key represents the **authorized tunnel population**, not cryptographic proof of the individual Dot's identity. Use a dedicated restricted tunnel/principal and control its workspace grants; do not map an entire shared workspace to an unrestricted personal principal. First grant only health/read, have genuine Yield call `dsh_health`, compare the server-side proof, then deliberately grant task creation and test one brief/follow-up/cancel.
 
-No tunnel client/system package has been installed or started by this work. On this machine, system-package provisioning belongs to the nixfiles project. No configured secret aliases were available for the cloud setup, so credentials/permissions remain a human-dependent prerequisite.
+The authorized local deployment now uses a standalone production package, private0700/0600 operator files and a dedicated gateway user service. The official tunnel-client0.0.18 and two user-unit definitions are built/pinned through an isolated nixfiles topic, not an ad hoc global install or full Home Manager activation. A separate DSH tunnel was created; Discord's tunnel was not modified. The existing restricted Read+Use runtime credential was transferred privately through the authorized server account, never through model output. Its future rotation also affects this connection. Genuine cloud/Yield acceptance remains a separate gate until an actual call is observed.
 
 References: [OpenAI Secure MCP Tunnel](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels.md), [official onboarding](https://github.com/openai/tunnel-client/blob/master/docs/onboarding.md), [header/configuration reference](https://github.com/openai/tunnel-client/blob/master/docs/configuration.md), [ChatGPT custom-MCP connection](https://developers.openai.com/plugins/deploy/connect-chatgpt.md).
 
@@ -128,6 +128,20 @@ Use this for general cloud-client interoperability or public plugin distribution
 V1 implements scoped bearer keys, **not an OAuth authorization server**. A client that requires OAuth needs an appropriate identity/authentication layer; do not disable authentication to make its connection UI succeed. Public plugin distribution has requirements beyond private tunnel testing. Hosting only this gateway elsewhere does not make local DSH magically reachable: it still needs an explicitly secured path to its runtime.
 
 ## Verification and limits
+
+The [operator probe](scripts/verify-local.mjs) defaults to authenticated health only. Creation requires an explicit flag and authorizes one real native-model request asking for a fixed reply without tools, file changes, subtasks or schedules. It repeats the same creation key to verify no duplicate is admitted. A saved probe can be re-read without another model request:
+
+```sh
+node scripts/verify-local.mjs
+node scripts/verify-local.mjs --confirm-create --project dshfiles
+node scripts/verify-local.mjs --read-probe-task <existing-probe-task-id>
+```
+
+Use `--credential-file /absolute/private/gateway.env` for a different operator file; only a single-link, non-symlinked0600 file owned by this user is accepted. Do not use `--env-file`: Node22 pre-scans that reserved flag before script guards. A fail-first regression caught that collision. The live local probe already observed a real native completion, exact expected reply and identical identity for duplicate creation; this does not by itself prove the cloud path.
+
+For this rootless systemd user deployment, filesystem namespace directives remapped root-owned ancestors to UID65534 and broke strict file ownership validation. The isolated Nix fix removes only those incompatible namespace directives and retains UMask0077, NoNewPrivileges and the other supported restrictions. These user units are **not filesystem sandboxes**; the application's private-file checks remain unchanged. An actual transient-unit test reproduces the old failure and proves ownership, SQLite writes and0600 creation with the fixed policy. No DSH or Discord restart is involved.
+
+The server returns404 for absent OAuth metadata routes, while every actual `/mcp` request still requires its bearer credential. This permits the official tunnel client's plain-MCP discovery without inventing an OAuth server or opening anonymous tool access.
 
 Focused checks cover durable real SQLite claims (including another OS process), grant isolation, key/payload conflicts, lost acknowledgments/restart, uncertain identity, conservative state mapping, HTTP authentication/Host/Origin/body/output/concurrency limits, redaction and shutdown draining. The public SDK's producer tests cover the requested Session ID and stable prompt UUID additions.
 
