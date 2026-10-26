@@ -2,7 +2,7 @@
 
 ## Current state —26October2026
 
-**The local gateway and dedicated OpenAI tunnel run as enabled user services. Genuine Yield is not connected yet.** ChatGPT rejected connector creation before any command reached this tunnel. Workspace-access approval is pending; do not silently broaden it.
+**The local gateway and dedicated OpenAI tunnel run as enabled user services. Genuine Yield is not connected yet.** ChatGPT rejected connector creation before any command reached this tunnel. The user explicitly chose to keep it private: do not grant the Incentive workspace access or activate Yield. See the [private-access findings](private-access-options.md) for the read-only continuation.
 
 Published topics:
 
@@ -42,12 +42,9 @@ Yield currently lives in the Incentive ChatGPT workspace. The new tunnel is scop
 
 Binding it to Incentive may make the transport reachable to other authorized workspace members. V1's injected gateway key represents the permitted tunnel population; it is not individual-user authentication. A personally installed plugin is not sufficient evidence that every transport caller is individually isolated.
 
-The user has been asked to choose:
+The user explicitly selected **keep it private**. The earlier approval question is resolved, not pending. Do not grant Incentive access or activate Yield. The later request to continue authorized private-only investigation; it did not reverse that choice.
 
-- Keep the prepared connection private and do not activate Yield; or
-- Explicitly allow Incentive workspace access, retain personal-only plugin installation (no workspace publication), then test genuine Yield.
-
-No workspace grant, existing-tunnel edit, anonymous MCP access or authentication bypass was applied after the denial. On continuation, inspect the pending answer first. If approved, update only this dedicated tunnel through the supported Platform UI, verify the plugin was not already created during the failed attempt, and retry the existing connector flow. First ask genuine Yield to call only `dsh_health`, then compare the returned project alias with tunnel dispatch/delivery evidence. Do not claim cloud success merely because polling is healthy.
+No workspace grant, existing-tunnel edit, anonymous MCP access or authentication bypass was applied after the denial. [Private-access findings](private-access-options.md) distinguish the tunnel eligibility gap from a possible owner-only OAuth HTTPS architecture. Neither a new public endpoint nor an authentication system has been approved or implemented. Do not claim cloud success merely because polling is healthy.
 
 ## Operator commands
 

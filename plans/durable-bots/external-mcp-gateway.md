@@ -2,7 +2,7 @@
 
 ## Current result —26October2026
 
-**Gateway deployed, real local native task verified, dedicated OpenAI tunnel healthy; genuine Yield blocked at a workspace-permission gate.** Both topics are pushed. Resume at the [current deployment and pending approval](../../apps/dsh-mcp-gateway/docs/local-deployment.md). The user must choose whether to grant the Incentive workspace access; do not infer permission from the earlier general setup authorization. No DSH/Discord restart, core patch or public DSH owner API exposure occurred. The sections below retain the earlier source milestone evidence as history, not current installation instructions.
+**Gateway deployed, real local native task verified, dedicated OpenAI tunnel healthy; genuine Yield blocked at a workspace-permission gate.** Both topics are pushed. Resume at the [current deployment decision](../../apps/dsh-mcp-gateway/docs/local-deployment.md) and [private-access findings](../../apps/dsh-mcp-gateway/docs/private-access-options.md). The user explicitly chose keep-private: no Incentive workspace grant or Yield activation. Read-only continuation found no verified supported tunnel-association bypass; a separately authorized owner-only OAuth HTTPS architecture is documented, not implemented. No DSH/Discord restart, core patch or public DSH owner API exposure occurred. The sections below retain the earlier source milestone evidence as history, not current installation instructions.
 
 ## Boundary
 
