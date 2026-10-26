@@ -84,13 +84,16 @@ export async function startGatewayServer(options: GatewayServerOptions): Promise
         refuse(response, 403)
         return
       }
+      // Absent routes, including OAuth discovery, must stay 404 rather than
+      // advertising a nonexistent OAuth server. All actual MCP traffic remains
+      // authenticated before methods, bodies or tool metadata are processed.
+      if (request.url !== '/mcp') {
+        refuse(response, 404)
+        return
+      }
       const principal = authenticate(request, options.credentials)
       if (principal === undefined) {
         refuse(response, 401)
-        return
-      }
-      if (request.url !== '/mcp') {
-        refuse(response, 404)
         return
       }
       if (request.method !== 'POST') {

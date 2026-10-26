@@ -131,6 +131,21 @@ it('implements MCP initialization and exposes exactly the scoped HTTP task tools
   ])
 })
 
+it('reports absent OAuth metadata as 404 without weakening MCP bearer authentication', async () => {
+  const test = await fixture()
+  for (const path of ['/', '/.well-known/oauth-protected-resource', '/.well-known/oauth-protected-resource/mcp']) {
+    const response = await fetch(`${test.server.origin}${path}`)
+    expect(response.status).toBe(404)
+    expect(response.headers.get('www-authenticate')).toBeNull()
+    expect(await response.text()).not.toContain('dsh_create_task')
+  }
+  expect(test.calls).toEqual([])
+  const unauthenticated = await fetch(`${test.server.origin}/mcp`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{invalid' })
+  expect(unauthenticated.status).toBe(401)
+  await unauthenticated.body?.cancel()
+  expect(test.calls).toEqual([])
+})
+
 it('rejects missing/wrong bearer before parsing or revealing any tool metadata', async () => {
   const test = await fixture()
   for (const authorization of ['', 'Bearer wrong']) {
