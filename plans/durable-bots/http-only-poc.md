@@ -16,6 +16,30 @@ DSH_HOME=/home/neolectron/.dsh node scripts/poc-yield-direct-http.mjs --account=
 
 This proves no local logout/token change was observed in this bounded test. It does not remotely validate refresh-grant validity or prove that the provider could never revoke a session later. The earlier Manuel probe found an already-expired access token before Dot network I/O; Marwan was not used for authenticated provider calls in these proofs. No evidence establishes that these read-only tests caused either reported login problem.
 
+## Follow-up26October: official Codex and inverse delegation
+
+The earlier route-policy explanation was incomplete. Current official Codex, pinned at `970111f6cb62cc02fe36a82ea7d71b37a2889c97` (not a verified installed-binary match), enables a process-local HTTP/WSS infrastructure-cookie jar. Its hardcoded allowlist includes Cloudflare cookies such as `__cf_bm`, `cf_clearance`, `cf_chl_*`, and OpenAI's routing cookie `__oailb`; ChatGPT account/session/auth cookies are excluded from the shared jar. This is response-cookie retention, not evidence of an interactive challenge solver or proof of which cookies caused success. Its API error mapping explicitly reports some Cloudflare403blocks. Default TLS does not supply a client identity certificate. See the pinned [cookie implementation](https://github.com/openai/codex/blob/970111f6cb62cc02fe36a82ea7d71b37a2889c97/codex-rs/http-client/src/chatgpt_cloudflare_cookies.rs) and [API error mapping](https://github.com/openai/codex/blob/970111f6cb62cc02fe36a82ea7d71b37a2889c97/codex-rs/codex-api/src/api_bridge.rs).
+
+No actual successful Codex request cookie/header/TLS comparison was made. Neither that source nor same-account inference success reveals the deployed security rules for Dot. Do not claim a magic header, a guaranteed cookie-based fix, or that inspected current upstream behavior necessarily exists in installed DSH/pi-ai.
+
+The original proposal recovered from the opening conversation was **let genuine Yield create/inspect/guide DSH threads through a connector**, not automatically import Codex conversations. Current official [Dot task docs](https://learn.chatgpt.com/docs/dots/tasks-and-memory.md) distinguish delegated task threads from the Dot conversation and say a task receives selected instructions/context rather than all its history. [Computer/app docs](https://learn.chatgpt.com/docs/dots/computers-and-apps.md) say Dots can use supported installed plugins; [plugin docs](https://learn.chatgpt.com/docs/plugins.md) include MCP tools.
+
+That inverse direction is more promising for a first step:
+
+```text
+User talks to genuine Yield in OpenAI's UI
+  → Yield invokes an authenticated DSH tool
+  → DSH creates one real native Session with the delegated brief
+  → work and follow-ups appear in the DSH GUI
+  → selected status/results return through the tool
+```
+
+DSH's owned thread actions already create and prompt through supported native SessionController services. Its owned dshx CLI also has `sessions create/start/prompt`; the existing communication MCP server is passive messaging only and cannot start a turn. A narrow authenticated external lifecycle adapter is still needed; the internal agent tools are not automatically available to external Yield. No direct session-file/database writing, generic host shell, blanket tool export or tokenized GUI credential disclosure.
+
+For remote access, an authenticated HTTPS MCP endpoint or the official [Secure MCP Tunnel](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels.md) is documented. The latter uses an outbound connection and a Platform runtime key plus workspace permissions; it is not zero-setup and its availability for the user's actual Dot/account remains unverified. A local Codex skill/CLI route is conditional on the delegated task's runtime reaching DSH and receiving appropriately limited authorization; a Codex cloud task cannot reach this computer's localhost by magic. Existing loopback forwarding is reported at `http://localhost:3198`; no authenticated external connection was attempted.
+
+First proof must be genuinely initiated by Yield: one read-only health tool returning a nonce, then one authorized task-create with an allowlisted project, request-id deduplication, a returned DSH thread link and one follow-up/status read. Do not label a normal ChatGPT MCP call or a synthetic client test as Yield proof. No MCP deployment, plugin/account changes or actual thread creation occurred in this investigation. This avoids our private Dot GET entirely, but does not mirror existing Codex tasks or move the main Yield conversation into DSH.
+
 ### Why Codex differs
 
 The actual serving DSH uses the pi-ai HTTP/SSE Codex provider (plugin resolves1.3.0), whose default inference target is `https://chatgpt.com/backend-api/codex/responses`. The Dot adapter instead calls `/backend-api/tbo/primary`, then verified Dot/room messaging endpoints. Same host/HTTP technology does not mean same resource, edge rules or permissions. Route-specific security is a plausible explanation, not a measured OpenAI configuration.
