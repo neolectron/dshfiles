@@ -1,0 +1,5 @@
+{
+  "extends": "../../tsconfig.base.client.json",
+  "compilerOptions": { "target": "ES2022", "lib": ["ES2023", "DOM"], "noEmit": true },
+  "include": ["src/**/*.ts", "tests/**/*.ts"]
+}

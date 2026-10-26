@@ -54,6 +54,16 @@ test('unknown, blank and wildcard browser owners cannot silently skip generation
   for (const owner of ['', '*', '@dshfiles/missing', 'bots']) assert.throws(() => selectBrowserTaskConfigs(configs, owner), /No browser task configuration/)
 })
 
+test('external MCP journey cache includes the normal gateway executable sources', async () => {
+  const { configs } = await planBrowserTasks()
+  const config = configs.get('dshfiles-plugins')
+  assert.ok(config)
+  for (const task of ['test:e2e', 'test:e2e:smoke']) {
+    assert.ok(config.tasks[task].inputs.includes('$TURBO_ROOT$/apps/dsh-mcp-gateway/src/**'))
+    assert.ok(config.tasks[task].inputs.includes('$TURBO_ROOT$/apps/dsh-mcp-gateway/package.json'))
+  }
+})
+
 test('a {string} parameter matches Gherkin strings with escaped quotes', () => {
   const pattern = cucumberExpressionPattern('the fake model is asked to {string}')
   assert.ok(pattern.test(String.raw`the fake model is asked to "[[call secret_get {\"alias\":\"DB\"}]]"`))

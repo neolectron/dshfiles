@@ -5,6 +5,7 @@ packages:
   - tooling/dshx/packages/*
   - apps/desktop
   - apps/bots-service
+  - apps/dsh-mcp-gateway
 
 # Global virtual-store links split Cordis module augmentations. Keep one local peer identity.
 enableGlobalVirtualStore: false

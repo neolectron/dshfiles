@@ -329,7 +329,10 @@ export const planBrowserTasks = async () => {
     owners.set(ownerName, owner)
   }
 
-  const fixtureInputsByFeature = new Map([['multi-host', ['scripts/profile-sync.ts']]])
+  const fixtureInputsByFeature = new Map([
+    ['multi-host', ['scripts/profile-sync.ts']],
+    ['external-mcp-gateway', ['apps/dsh-mcp-gateway/src/**', 'apps/dsh-mcp-gateway/package.json', 'apps/dsh-mcp-gateway/tsconfig.json']],
+  ])
   const e2eTask = owner => ({
     dependsOn: [],
     inputs: rootAnchored([

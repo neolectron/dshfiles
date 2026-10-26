@@ -1,0 +1,28 @@
+{
+  "name": "@dshfiles/dsh-mcp-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Scoped external MCP task management for one existing DSH runtime; no second agent engine.",
+  "license": "MIT",
+  "type": "module",
+  "bin": { "dsh-mcp-gateway": "./dist/main.js" },
+  "exports": { "./protocol": { "types": "./src/contracts.ts", "default": "./dist/contracts.js" } },
+  "files": ["dist", "src", "docs", "README.md", "LICENSE"],
+  "scripts": {
+    "build": "esbuild src/main.ts src/contracts.ts --bundle --platform=node --format=esm --packages=external --target=node22 --outdir=dist",
+    "start": "node dist/main.js",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@dshfiles/dshx": "workspace:*",
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "esbuild": "0.28.2",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}

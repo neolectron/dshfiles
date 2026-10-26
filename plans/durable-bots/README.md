@@ -1,8 +1,12 @@
 # Durable Bots: end-to-end completion
 
-The first version implements provider-neutral Bots, durable messaging and an unofficial Dot protocol adapter, but it is **not a complete live product**. The user now requires being able to chat with their existing Dot in this GUI. Passing fixtures or preparing a release is not acceptance. Current behavior and limits remain documented in the [guide](../../docs/bots.md), [Bots README](../../plugins/@dshfiles/bots/README.md) and [Dot README](../../plugins/@dshfiles/bot-openai-dot/README.md).
+The first version implements provider-neutral Bots, durable messaging and an unofficial Dot protocol adapter, but it is **not a complete live product**. The original request was chatting with the existing Dot in this GUI; the latest accepted first step is talking to Yield in OpenAI's UI and delegating task conversations into DSH through a scoped external MCP gateway. Passing fixtures or preparing a release is not acceptance. Current behavior and limits remain documented in the [guide](../../docs/bots.md), [Bots README](../../plugins/@dshfiles/bots/README.md) and [Dot README](../../plugins/@dshfiles/bot-openai-dot/README.md).
 
-## Current proof: Yield delegates native DSH conversations
+## Current milestone: reusable external MCP gateway built
+
+**Resume here:** [gateway verification and private cloud setup](external-mcp-gateway.md), [operator guide](../../apps/dsh-mcp-gateway/README.md). The six scoped tools are implemented.46gateway tests,52SDK platform tests and20generator tests pass; a real external MCP client→normal gateway CLI→actual native DSH Session/Agent/GUI journey is green, including follow-up, duplicate-create prevention, principal isolation, actual active-turn cancellation and cleanup. Only the model-provider boundary is synthetic. Focused app lint/AST/type/build/import checks pass; global feature hygiene retains60unrelated baseline errors. No live profile/runtime restart or public endpoint change. Genuine Yield/cloud tunnel operation is the next human-credential/permission-dependent gate; no genuine cloud call is claimed.
+
+## Earlier proof: Yield delegates native DSH conversations
 
 **Resume here:** [genuine Yield delegation PoC](yield-delegation-poc.md). The user accepts talking to Yield in OpenAI's UI and doing task conversations in DSH; no Codex mirror is needed. Genuine Yield attempted the harmless connected-computer check, but reported its local task executor could not start because the workspace is out of credits. No check command or DSH task ran through that route. Yield reports direct installed MCP tools are available without starting a Codex task; the actual account UI offers Add custom MCP server. Next is choosing a reachable carrier for a minimal read-only MCP tool, not a full bridge. No backend service/tunnel/profile change has been made.
 
