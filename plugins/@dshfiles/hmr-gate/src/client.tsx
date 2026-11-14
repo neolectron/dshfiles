@@ -5,6 +5,7 @@ import { useSyncExternalStore } from 'react'
 import { decodeFrame, type DeferredPackage } from './frames.js'
 import { createPendingReread } from './reread.js'
 import { SlotCrashRecovery } from './slot-crash-recovery.js'
+import { createQuietReload, SwapGuard } from './swap-guard.js'
 
 /**
  * The browser half of the gate: the stock `/plugins/events` subscriber, plus the
@@ -92,10 +93,36 @@ export default defineClient({
         'hmr-gate: pending restart source',
       )
     }
+    // A swap the renderer cannot survive becomes one planned reload, taken when it loses nothing.
+    const reloadQuietly = createQuietReload({
+      hidden: () => document.visibilityState === 'hidden',
+      editing: () => {
+        const active = document.activeElement
+        return active instanceof HTMLElement && (active.isContentEditable || active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement)
+      },
+      onSettle: listener => {
+        document.addEventListener('focusout', listener)
+        document.addEventListener('visibilitychange', listener)
+        return () => {
+          document.removeEventListener('focusout', listener)
+          document.removeEventListener('visibilitychange', listener)
+        }
+      },
+      reload: () => window.location.reload(),
+    })
+    const currentRows = () => ctx.modules.manifest.modules
     /** Handles one frame; returns true when it moved the deferred notice. */
     const receive = (data: string): boolean => {
       const frame = decodeFrame(data)
       if (frame === undefined) return false
+      if (frame.type === 'graph' && SwapGuard.graphNeedsReload({ rows: currentRows(), release: ctx.modules.manifest.release?.version }, frame)) {
+        reloadQuietly()
+        return false
+      }
+      if (frame.type === 'rebuilt' && SwapGuard.rebuiltNeedsReload(currentRows(), frame.id)) {
+        reloadQuietly()
+        return false
+      }
       if (frame.type === 'graph') {
         void ctx.modules.entries.sync(frame.graph).catch((error: unknown) => {
           ctx.logger.warn(error)

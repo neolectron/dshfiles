@@ -29,6 +29,24 @@ client code live.
 | `rebuilt`  | a client bundle the page may apply now (same as stock)                     |
 | `deferred` | this package's addition: a rebuild held back because its Host half changed |
 
+### Swaps the page cannot take
+
+The stock renderer installs the conversation's `session` slot scope from
+`@deepseek-ai/dsh-client-ui-session`. Replacing that package, a package it
+injects, or the provider of a contract it injects (`@dshfiles/session-controller`
+for `dsh-api-session-controller`) disposes the scope while React still renders
+the conversation; the renderer throws `SlotAssemblyError` past every error
+boundary and the page goes blank. No plugin can make that swap safe, so the gate
+does not attempt it (`src/swap-guard.ts`): for a `rebuilt` frame of such a
+package, or a `graph` frame that changes one, it reloads the page instead, right
+away when nobody is typing, else when the focused field loses focus or the tab
+is hidden. Every other package keeps its live swap.
+
+`src/slot-crash-recovery.ts` stays as the last resort for a crash the guard did
+not foresee: a page that blanks reloads itself after 1.5 s (three attempts per
+two minutes). The renderer's `SlotAssemblyError` is a nameless `Error` subclass,
+so the check matches the constructor name, not `error.name`.
+
 The Host tracks, per client row:
 
 1. the package's Host entry, resolved from its own `package.json` (`exports['.']`,
