@@ -29,6 +29,9 @@
   background: var(--dsw-specific-bubble);
   /* dshfiles (visual refresh T2.1): xl is the 12px step of the P0 scale; the fill is the raised tone. */
   border-radius: var(--dsw-radius-xl);
+  /* dshfiles (b:d5wg): over a theme's backdrop scene the raised fill can match the scene behind the veil; the theme
+     then draws a hairline ring (ui-styles `--dshx-backdrop-bubble-ring`). Nothing elsewhere. */
+  box-shadow: var(--dshx-backdrop-bubble-ring, none);
   /* 42px single-line bubble at the default size: 22 line + 10 vertical
      padding each side; the Settings font-size preference moves size and line
      height together through the body-published axis. */

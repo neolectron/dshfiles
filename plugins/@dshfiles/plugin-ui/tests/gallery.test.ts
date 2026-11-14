@@ -68,13 +68,14 @@ describe('gallery themes', () => {
     expect(AppearanceModel.runtimeThemeCss(settings, scene(SVG))).toMatch(/background-color: rgb\(\d+ \d+ \d+ \/ 0\.7\);/u)
   })
 
-  it('blurs a still of the scene under the column and tints it as far as asked, with no filter per frame', () => {
+  it('blurs a still of the scene under the column and tints it as far as asked, with no filter per frame without a GPU', () => {
     const settings = { ...DEFAULT_APPEARANCE, customTheme: 'night-reef', readingBlur: 6, readingTint: 20 }
     const css = AppearanceModel.runtimeThemeCss(settings, scene(SVG, DARK_PIXELS))
     expect(css).toContain(encodeURIComponent('<feGaussianBlur stdDeviation="6.00"/>'))
     expect(css).toContain('background-attachment: scroll, fixed;')
     expect(css).toMatch(/linear-gradient\(rgb\(\d+ \d+ \d+ \/ 0\.2\)/u)
-    expect(css).not.toContain('backdrop-filter')
+    // A live filter only where the client found a GPU compositor.
+    for (const rule of css.split('\n}').filter(text => text.includes('backdrop-filter'))) expect(rule).toContain('[data-dshx-gpu] ')
     // Out-of-bounds values are clamped; a theme without a backdrop has nothing to veil.
     expect(AppearanceModel.runtimeThemeCss({ ...settings, readingBlur: 99 }, scene(SVG, DARK_PIXELS))).toContain(encodeURIComponent('stdDeviation="24.00"'))
     expect(AppearanceModel.runtimeThemeCss({ ...DEFAULT_APPEARANCE, preset: 'moss', readingTint: 80 })).not.toContain('[data-conversation-content]::before')

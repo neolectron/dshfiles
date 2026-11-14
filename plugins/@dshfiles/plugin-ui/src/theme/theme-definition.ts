@@ -324,7 +324,27 @@ export interface SceneSource {
   readonly svg: string
   /** Pixels of the resting picture under the conversation column; absent until the client has sampled it. */
   readonly sample?: readonly Rgb[]
+  /** Pixels of the whole resting picture, where chrome outside the column (the turn rail) sits. */
+  readonly surround?: readonly Rgb[]
 }
+
+/** The sample grid the client draws a scene into, and the columns under the conversation (its middle 60%). */
+export const SCENE_SAMPLE = { width: 64, height: 40, columnStart: 13, columnEnd: 51 } as const
+
+/** The column part of a whole-picture sample laid out as `SCENE_SAMPLE` rows. */
+export function columnOfSample(pixels: readonly Rgb[]): Rgb[] {
+  return pixels.filter((_, index) => {
+    const x = index % SCENE_SAMPLE.width
+    return x >= SCENE_SAMPLE.columnStart && x < SCENE_SAMPLE.columnEnd
+  })
+}
+
+/**
+ * Attribute the client sets on `<html>` when the browser composites on a GPU. With it the reading veil blurs the moving
+ * scene live (`backdrop-filter`); without it (a software rasteriser, where that filter re-blurs every frame on the CPU)
+ * the veil shows a pre-blurred still of the scene instead.
+ */
+export const GPU_ATTRIBUTE = 'data-dshx-gpu'
 
 /** Scene sources by id; a scene not loaded yet is left out until it arrives. */
 export type SceneSources = ReadonlyMap<string, SceneSource>
@@ -340,6 +360,18 @@ export const READING_BOUNDS = { blur: { min: 0, max: 24 }, tint: { min: 0, max: 
 /** Used while a scene has no pixel sample (the client could not decode it): a veil that reads over most scenes. */
 const UNSAMPLED_VEIL = 0.7
 
+/**
+ * What must read over a backdrop, at the WCAG AA minimums `contrastWarnings` holds a theme to on its own background:
+ * primary and secondary text (4.5:1) and tertiary text and icons (3:1: labels such as "Worked for 14s", the copy and
+ * more-actions glyphs). Chrome outside the column also keeps the strong borders it draws with (the turn rail's ticks).
+ * `ReadabilityModel.minimumVeil` never asks more of a colour than the theme's own background gives it.
+ */
+function readabilityTargets(colours: SchemeTheme['colours'], chrome = false): VeilInput['texts'] {
+  const target = (hex: string, min: number) => ({ colour: ReadabilityModel.hexToRgb(hex), min })
+  const text = [target(colours.text, 4.5), target(colours.muted, 4.5), target(colours.faint, 3)]
+  return chrome ? [...text, target(colours.borderStrong, 3)] : text
+}
+
 const declarationLines = (text: string): string[] =>
   text
     .split(';')
@@ -353,7 +385,19 @@ const declarationLines = (text: string): string[] =>
  */
 function glassDeclarations(glass: SceneGlass): string[] {
   const tint = rgba(glass.tint, glass.opacity)
-  return [`  background-image: linear-gradient(90deg, transparent 0%, ${tint} 22%, ${tint} 78%, transparent 100%);`]
+  const [from, to] = GLASS_PLATEAU
+  return [`  background-image: linear-gradient(90deg, transparent 0%, ${tint} ${from * 100}%, ${tint} ${to * 100}%, transparent 100%);`]
+}
+
+/** Where the glass reaches full strength across the width (it ramps in from each edge). */
+const GLASS_PLATEAU = [0.22, 0.78] as const
+
+/** The glass's strength at a horizontal position (0–1 across the viewport), as `glassDeclarations` paints it. */
+function glassWeight(position: number): number {
+  const [from, to] = GLASS_PLATEAU
+  if (position < from) return position / from
+  if (position > to) return (1 - position) / (1 - to)
+  return 1
 }
 
 /**
@@ -365,46 +409,95 @@ function veilOpacity(theme: SchemeTheme, source: SceneSource | undefined, readin
   if (source === undefined) return user
   const colours = theme.colours
   const glass = theme.backdrop?.glass
-  if (source.sample === undefined) return Math.max(UNSAMPLED_VEIL, user)
-  let input: VeilInput = {
-    sample: source.sample,
-    veil: ReadabilityModel.hexToRgb(colours.bg),
-    texts: [
-      { colour: ReadabilityModel.hexToRgb(colours.text), min: 4.5 },
-      { colour: ReadabilityModel.hexToRgb(colours.muted), min: 3 },
-    ],
+  if (source.sample === undefined && source.surround === undefined) return Math.max(UNSAMPLED_VEIL, user)
+  const veil = ReadabilityModel.hexToRgb(colours.bg)
+  const texts = readabilityTargets(colours)
+  // A column can sit anywhere over the picture (a split pane, a wide sidebar), so the veil reads over the whole of it,
+  // each pixel under the glass as strong as the glass is there.
+  if (source.surround !== undefined) {
+    const tint = glass === undefined ? undefined : ReadabilityModel.hexToRgb(glass.tint)
+    const sample = source.surround.map((pixel, index) => {
+      const weight = glassWeight(((index % SCENE_SAMPLE.width) + 0.5) / SCENE_SAMPLE.width)
+      return tint === undefined || glass === undefined ? pixel : ReadabilityModel.composite(pixel, tint, glass.opacity * weight)
+    })
+    return Math.max(ReadabilityModel.minimumVeil({ sample, veil, texts }), user)
   }
+  let input: VeilInput = { sample: source.sample ?? [], veil, texts }
   if (glass !== undefined) input = { ...input, glass: { colour: ReadabilityModel.hexToRgb(glass.tint), opacity: glass.opacity } }
   return Math.max(ReadabilityModel.minimumVeil(input), user)
 }
 
 /**
- * The reading veil: a band the column's own width (the shared `--dsh-chat-content-width`, plus a margin) and the
- * conversation's full height, in the non-scrolling conversation body, made a stacking context so the band stays under
- * every message and the composer and over the backdrop. It paints the theme background at the veil opacity over a
- * pre-blurred still of the scene, fixed to the viewport like the scene so the two line up. Static: no filter runs per
- * frame, and the motion under the text stops while the sides keep moving.
+ * The surface chrome outside the column lays under itself (the turn rail): the theme background at the opacity that
+ * keeps the same targets readable over the whole picture, where the glass has faded out. The user's tint raises it too.
  */
-function readingVeilCss(host: string, source: SceneSource | undefined, opacity: number, blur: number, bg: string): string {
-  const body = `${host} [data-conversation-content]`
-  const fade = 'linear-gradient(90deg, transparent 0, #000 32px, #000 calc(100% - 32px), transparent 100%)'
-  const tint = rgba(bg, opacity)
-  const still = source !== undefined && blur > 0 ? SceneCatalog.image(SceneCatalog.blurred(source.svg, blur)) : undefined
-  const background =
-    still === undefined
-      ? [`  background-color: ${tint};`]
-      : [
-          `  background-image: linear-gradient(${tint}, ${tint}), ${still};`,
-          '  background-attachment: scroll, fixed;',
-          '  background-size: auto, cover;',
-          '  background-position: center;',
-          '  background-repeat: no-repeat;',
-        ]
-  return [
-    `${body} {`,
+function chromeOpacity(theme: SchemeTheme, source: SceneSource | undefined, reading: ReadingVeil): number {
+  const user = Math.min(1, Math.max(0, reading.tint / 100))
+  if (source === undefined) return user
+  const pixels = source.surround ?? source.sample
+  if (pixels === undefined) return Math.max(UNSAMPLED_VEIL, user)
+  const need = ReadabilityModel.minimumVeil({ sample: pixels, veil: ReadabilityModel.hexToRgb(theme.colours.bg), texts: readabilityTargets(theme.colours, true) })
+  return Math.max(need, user)
+}
+
+/** The veil a scheme lays under its column over a scene, as the CSS that paints it would: for tests and the agent. */
+export interface VeilMaterial {
+  /** Opacity of the theme background over the scene (and its glass) under the column. */
+  readonly opacity: number
+  /** Opacity of the theme background under chrome outside the column. */
+  readonly chrome: number
+}
+
+function veilMaterial(theme: SchemeTheme, source: SceneSource | undefined, reading: ReadingVeil = { blur: 0, tint: 0 }): VeilMaterial {
+  return { opacity: veilOpacity(theme, source, reading), chrome: chromeOpacity(theme, source, reading) }
+}
+
+/** The band the reading veil covers: the column's own width (the shared `--dsh-chat-content-width`) plus a margin. */
+const VEIL_BAND = 'min(100%, calc(var(--dsh-chat-content-width, 760px) + 96px))'
+/** The veil's sides fade over 32px, so the scene keeps its edges. */
+const VEIL_FADE = 'linear-gradient(90deg, transparent 0, #000 32px, #000 calc(100% - 32px), transparent 100%)'
+/** The same band and fade drawn on a full-width box (the composer seat), centred like the veil. */
+const SEAT_BAND = `linear-gradient(90deg, transparent calc(50% - ${VEIL_BAND} / 2), #000 calc(50% - ${VEIL_BAND} / 2 + 32px), #000 calc(50% + ${VEIL_BAND} / 2 - 32px), transparent calc(50% + ${VEIL_BAND} / 2))`
+/** The user bubble's outline over a backdrop: a hairline in the strong border step, inside its box. */
+export const BUBBLE_RING = 'inset 0 0 0 1px var(--dshx-tone-6)'
+/** The composer seat fades the transcript out over its top 36px (ConversationRoot's input mask). */
+const SEAT_FADE = 'linear-gradient(180deg, transparent 0, #000 36px)'
+
+/** A tint over a still of the scene, the still fixed to the viewport like the scene so the two line up. */
+const stillLayers = (tint: string | undefined, still: string): string[] => [
+  `  background-image: ${tint === undefined ? '' : `linear-gradient(${tint}, ${tint}), `}${still};`,
+  `  background-attachment: ${tint === undefined ? '' : 'scroll, '}fixed;`,
+  `  background-size: ${tint === undefined ? '' : 'auto, '}cover;`,
+  '  background-position: center;',
+  '  background-repeat: no-repeat;',
+]
+
+/**
+ * The reading veil: a band the column's width and the conversation's full height, in the non-scrolling conversation
+ * body, made a stacking context so the band stays under every message and the composer and over the backdrop. It
+ * paints the theme background at the veil opacity over the scene, blurred two ways:
+ *
+ * - without a GPU, over a pre-blurred still of the scene fixed to the viewport like the scene, so the two line up.
+ *   Static: no filter runs per frame (a live `backdrop-filter` re-blurred the moving scene every frame on the CPU, 8
+ *   fps), and the motion under the text stops while the sides keep moving.
+ * - with a GPU (`GPU_ATTRIBUTE`), over the moving scene itself through `backdrop-filter`, which the GPU composites.
+ *
+ * The composer seat at the bottom paints the same tint over the same still, fixed the same way, so the transcript fades
+ * out under the composer into the veil instead of into a band of plain background; its mask cuts it to the veil's band.
+ */
+function readingVeilCss(host: string, gpuHost: string, source: SceneSource | undefined, opacity: number, blur: number, bg: string): string {
+  const body = (scope: string) => `${scope} [data-conversation-content]`
+  const tint = opacity > 0 ? rgba(bg, opacity) : undefined
+  const blurred = source !== undefined && blur > 0 ? SceneCatalog.image(SceneCatalog.blurred(source.svg, blur)) : undefined
+  const background = blurred === undefined ? [`  background-color: ${tint ?? 'transparent'};`] : stillLayers(tint, blurred)
+  const blocks: string[] = []
+  // A scene the theme's text already reads on, with no blur asked, needs no band: only the seat continues the scene.
+  if (tint !== undefined || blurred !== undefined)
+    blocks.push(
+    `${body(host)} {`,
     '  isolation: isolate;',
     '}',
-    `${body}::before {`,
+    `${body(host)}::before {`,
     "  content: '';",
     '  position: absolute;',
     '  top: 0;',
@@ -412,18 +505,55 @@ function readingVeilCss(host: string, source: SceneSource | undefined, opacity: 
     '  left: 0;',
     '  right: 0;',
     '  margin-inline: auto;',
-    '  width: min(100%, calc(var(--dsh-chat-content-width, 760px) + 96px));',
+    `  width: ${VEIL_BAND};`,
     '  z-index: -1;',
     '  pointer-events: none;',
     ...background,
-    `  mask-image: ${fade};`,
-    `  -webkit-mask-image: ${fade};`,
+    `  mask-image: ${VEIL_FADE};`,
+    `  -webkit-mask-image: ${VEIL_FADE};`,
     '}',
-  ].join('\n')
+    )
+  if (blurred !== undefined)
+    blocks.push(
+      `${body(gpuHost)}::before {`,
+      '  background-image: none;',
+      `  background-color: ${tint ?? 'transparent'};`,
+      `  backdrop-filter: blur(${blur}px);`,
+      `  -webkit-backdrop-filter: blur(${blur}px);`,
+      '}',
+    )
+  if (source !== undefined) {
+    // Without a blur the veil shows the moving scene; the seat takes the scene's resting picture, which only shows there.
+    const still = blurred ?? SceneCatalog.image(SceneCatalog.resting(source.svg))
+    const seat = `${body(host)}[data-content-phase='active'] [data-composer-seat]`
+    blocks.push(
+      `${seat} {`,
+      // A transform hint would make the seat a containing block that turns its fixed background into a scrolling one.
+      '  will-change: auto;',
+      '  background: none;',
+      '}',
+      // On a pseudo-element under the seat's content: a mask on the seat itself would fade the composer card too. The
+      // sticky seat (z-index 9) is a stacking context, so this stays over the transcript and under the card.
+      `${seat}::before {`,
+      "  content: '';",
+      '  position: absolute;',
+      '  inset: 0;',
+      '  z-index: -1;',
+      '  pointer-events: none;',
+      ...stillLayers(tint, still),
+      `  mask-image: ${SEAT_FADE}, ${SEAT_BAND};`,
+      `  -webkit-mask-image: ${SEAT_FADE}, ${SEAT_BAND};`,
+      '  mask-composite: intersect;',
+      '  -webkit-mask-composite: source-in;',
+      '}',
+    )
+  }
+  return blocks.join('\n')
 }
 
 function backdropCss(scope: string, theme: SchemeTheme, backdrop: Backdrop, scenes: SceneSources, reading: ReadingVeil): string {
   const host = `${scope} ${BACKDROP_HOST}`
+  const gpuHost = `${scope}[${GPU_ATTRIBUTE}] ${BACKDROP_HOST}`
   // Four pseudo-elements host the items, back to front: two on the dockview between two on the shell, all under content.
   const slots = [`${host}::before`, `${host} .dv-dockview::before`, `${host} .dv-dockview::after`, `${host}::after`]
   const source = backdrop.scene === undefined ? undefined : scenes.get(backdrop.scene)
@@ -439,6 +569,7 @@ function backdropCss(scope: string, theme: SchemeTheme, backdrop: Backdrop, scen
     ])
   for (const layer of backdrop.layers ?? []) items.push(declarationLines(layer))
   if (backdrop.glass !== undefined) items.push(glassDeclarations(backdrop.glass))
+  const material = veilMaterial(theme, source, reading)
   const blocks = [
     // The shell becomes the backdrop's stacking context; its dockview surfaces turn transparent so the layers show.
     `${host} {`,
@@ -447,6 +578,24 @@ function backdropCss(scope: string, theme: SchemeTheme, backdrop: Backdrop, scen
     '  --dv-tabs-and-actions-container-background-color: transparent;',
     '  --dv-activegroup-visiblepanel-tab-background-color: transparent;',
     '  --dv-inactivegroup-visiblepanel-tab-background-color: transparent;',
+    // Chrome that sits on the scene outside the column (the turn rail) lays this under itself.
+    `  --dshx-backdrop-chrome: ${rgba(theme.colours.bg, material.chrome)};`,
+    // The raised bubble fill can match the veiled scene behind it: a strong hairline keeps the user's message apart.
+    `  --dshx-backdrop-bubble-ring: ${BUBBLE_RING};`,
+    '}',
+    // Docked panes are drawn in Dockview's render overlays, which hold a transform and paint containment for
+    // compositing. Either makes the overlay the frame of every fixed background inside it, so each pane fitted its own
+    // copy of the scene still to itself: a scene repeated per split, out of register with the one behind. The backdrop
+    // is one picture fixed to the viewport, so the docked overlays give both up (floating windows keep theirs).
+    `${host} .dv-render-overlay:not(.dv-render-overlay-float) {`,
+    '  transform: none;',
+    '  will-change: auto;',
+    '  contain: none;',
+    '  backface-visibility: visible;',
+    '}',
+    // Only conversations show the scene: every other pane (Settings, Backlog, ...) keeps the theme's own surface.
+    `${host} [data-workbench-panel-id]:not(:has([data-conversation-content])) {`,
+    '  background-color: var(--dshx-tone-0);',
     '}',
   ]
   items.forEach((declarations, index) => {
@@ -464,9 +613,8 @@ function backdropCss(scope: string, theme: SchemeTheme, backdrop: Backdrop, scen
     )
   })
   if (backdrop.keyframes !== undefined) blocks.push(backdrop.keyframes)
-  const opacity = veilOpacity(theme, source, reading)
   const blur = Math.min(READING_BOUNDS.blur.max, Math.max(0, reading.blur))
-  if (opacity > 0 || (blur > 0 && source !== undefined)) blocks.push(readingVeilCss(host, source, opacity, blur, theme.colours.bg))
+  if (material.opacity > 0 || source !== undefined) blocks.push(readingVeilCss(host, gpuHost, source, material.opacity, blur, theme.colours.bg))
   const used = slots.slice(0, items.length).join(', ')
   const resting = source === undefined ? [] : [`  ${slots[0]} { background-image: ${SceneCatalog.image(SceneCatalog.resting(source.svg))}; }`]
   blocks.push('@media (prefers-reduced-motion: reduce) {', `  ${used} { animation: none !important; }`, ...resting, '}')
@@ -508,4 +656,6 @@ export class ThemeDefinitionModel {
   static readonly baseInput = baseInput
   static readonly css = definitionCss
   static readonly scenesOf = scenesOf
+  static readonly veilMaterial = veilMaterial
+  static readonly glassWeight = glassWeight
 }

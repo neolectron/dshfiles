@@ -120,7 +120,7 @@
     {
       "id": "saved-themes",
       "title": "Saved and gallery themes: any theme on request, Claude Code scenes, and Dracula",
-      "summary": "A theme is data: exact colours per scheme (eleven neutral steps, accent and status colours), optional syntax colours and an optional animated backdrop behind the conversation. The agent saves any theme the user asks for with theme_define and it applies live, no restart; theme_set customTheme switches between saved themes and presets; theme_remove deletes one. The built-in Dracula preset uses the same format: official Dracula Classic in dark with a night sky (twinkling stars, a violet moon), official Alucard Classic in light. Sixteen built-in gallery themes paint the twenty animated scenes of Claude Code’s theme-examples plugin (Apache-2.0, vendored, built on the Host and served to the client by the scene method), each under its glass in the scheme it is drawn for. Under the conversation column each theme lays the least veil its text needs over its scene; readingBlur and readingTint add a pre-blurred still and more tint, with no per-frame filter.",
+      "summary": "A theme is data: exact colours per scheme (eleven neutral steps, accent and status colours), optional syntax colours and an optional animated backdrop behind the conversation. The agent saves any theme the user asks for with theme_define and it applies live, no restart; theme_set customTheme switches between saved themes and presets; theme_remove deletes one. The built-in Dracula preset uses the same format: official Dracula Classic in dark with a night sky (twinkling stars, a violet moon), official Alucard Classic in light. Sixteen built-in gallery themes paint the twenty animated scenes of Claude Code’s theme-examples plugin (Apache-2.0, vendored, built on the Host and served to the client by the scene method), each under its glass in the scheme it is drawn for. Under the conversation column each theme lays the least veil its primary, secondary and tertiary text and icons need anywhere over its scene; readingBlur and readingTint add a blur (live over the moving scene where the browser composites on a GPU, a pre-blurred still without one) and more tint. The scene is one picture fixed behind the whole workbench, shown only behind conversation panes; the composer seat continues the veil, the turn rail and the user bubble get readable surfaces over the scene.",
       "onboarding": {
         "firstAction": "Ask the agent for a theme, for example “make DSH look like Nord”, or pick the Dracula preset in Settings › Appearance.",
         "doneWhen": "The app takes the theme's exact colours at once, with its backdrop behind the conversation if it has one."
@@ -202,13 +202,31 @@
           "kind": "unit-test",
           "id": "ui-styles.reading-veil",
           "file": "plugins/@dshfiles/plugin-ui/tests/gallery.test.ts",
-          "testName": "blurs a still of the scene under the column and tints it as far as asked, with no filter per frame"
+          "testName": "blurs a still of the scene under the column and tints it as far as asked, with no filter per frame without a GPU"
         },
         {
           "kind": "unit-test",
           "id": "ui-styles.readability-veil",
           "file": "plugins/@dshfiles/plugin-ui/tests/gallery.test.ts",
           "testName": "keeps its text readable over its scene with a veil, whatever the user asks"
+        },
+        {
+          "kind": "unit-test",
+          "id": "ui-styles.backdrop-readability-all-themes",
+          "file": "plugins/@dshfiles/plugin-ui/tests/backdrop-readability.test.ts",
+          "testName": "covers every built-in scene, sampled from a real raster"
+        },
+        {
+          "kind": "unit-test",
+          "id": "ui-styles.backdrop-one-scene",
+          "file": "plugins/@dshfiles/plugin-ui/tests/backdrop-readability.test.ts",
+          "testName": "draws one scene for the whole workbench: docked panes give up the transform that re-framed fixed backgrounds"
+        },
+        {
+          "kind": "unit-test",
+          "id": "ui-styles.backdrop-gpu-blur",
+          "file": "plugins/@dshfiles/plugin-ui/tests/backdrop-readability.test.ts",
+          "testName": "blurs the moving scene live only where the browser composites on a GPU, the still everywhere else"
         }
       ],
       "telemetry": [

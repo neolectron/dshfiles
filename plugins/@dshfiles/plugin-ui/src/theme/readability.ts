@@ -49,6 +49,14 @@ function hexToRgb(hex: string): Rgb {
 
 const reads = (under: Rgb, texts: readonly TextTarget[]): boolean => texts.every(text => contrast(text.colour, under) >= text.min)
 
+/**
+ * Each target as strict as it can be over a full veil: a colour that sits under its minimum on the theme's own
+ * background (an official palette's faint step, say) asks only for what that background gives it. A veil never has to
+ * read better than the plain theme, and the bisection always has a reachable target.
+ */
+const reachable = (veil: Rgb, texts: readonly TextTarget[]): TextTarget[] =>
+  texts.map(text => ({ colour: text.colour, min: Math.min(text.min, contrast(text.colour, veil) - 0.05) }))
+
 /** The smallest veil opacity for one pixel, found by bisection; 1 when even a full veil does not read. */
 function veilFor(pixel: Rgb, veil: Rgb, texts: readonly TextTarget[]): number {
   if (reads(pixel, texts)) return 0
@@ -66,18 +74,29 @@ function veilFor(pixel: Rgb, veil: Rgb, texts: readonly TextTarget[]): number {
 /** The veil opacity (0–1, rounded up to 0.05) that keeps the targets readable over `coverage` of the sample. */
 function minimumVeil(input: VeilInput): number {
   if (input.sample.length === 0) return 0
+  const texts = reachable(input.veil, input.texts)
   const needs = input.sample
     .map(pixel => (input.glass === undefined ? pixel : mix(pixel, input.glass.colour, input.glass.opacity)))
-    .map(pixel => veilFor(pixel, input.veil, input.texts))
+    .map(pixel => veilFor(pixel, input.veil, texts))
     .sort((a, b) => a - b)
   const index = Math.min(needs.length - 1, Math.ceil((input.coverage ?? 0.95) * needs.length) - 1)
   const need = needs[Math.max(0, index)] ?? 0
   return Math.min(1, Math.max(0, Math.ceil(need * 20 - 1e-9) / 20))
 }
 
+/**
+ * What a reader sees at one scene pixel: the scene, under the glass when there is one, under the veil at its opacity.
+ * Browsers composite in sRGB, so this is the encoded-channel mix they draw.
+ */
+function composite(pixel: Rgb, veil: Rgb, opacity: number, glass?: VeilInput['glass']): Rgb {
+  const glassed = glass === undefined ? pixel : mix(pixel, glass.colour, glass.opacity)
+  return mix(glassed, veil, opacity)
+}
+
 /** Text readability over a backdrop: the veil a theme needs, and the colour helpers it uses. */
 export class ReadabilityModel {
   static readonly minimumVeil = minimumVeil
+  static readonly composite = composite
   static readonly contrast = contrast
   static readonly hexToRgb = hexToRgb
 }

@@ -49,13 +49,30 @@ plugin's classes), and the owner of the theme.
   swaps in the scene's own resting picture under that query. `theme_set { customTheme: "night-reef" }` picks one;
   `theme_get` lists them in `galleryThemes`. A saved theme can paint a scene too (`backdrop.scene`).
 - **Reading veil and readability.** Under the conversation column, a theme with a backdrop lays a veil of its own
-  background colour. Its opacity is the smallest that keeps the theme's text readable over that scene
-  (`plugin-ui/src/theme/readability.ts`: text 4.5:1, secondary 3:1 over 95% of a coarse sample of the scene's resting
-  picture, taken once by the client), so white text never lands on a white part of a scene; 0 when the scene is calm
-  enough. Two settings add to it: `readingBlur` (0–24 px) and `readingTint` (0–100 %), in Settings › Appearance or
-  `theme_set { readingBlur, readingTint }`. The blur is a pre-blurred still of the scene, rasterised once and fixed to
-  the viewport like the scene, so nothing is filtered per frame: no `backdrop-filter` anywhere in a backdrop. The
-  scene's glass is a gradient tint for the same reason. Both are kept across theme changes; `reset: true` sets them to 0.
+  background colour. Its opacity is the smallest that keeps the theme's text readable anywhere over that scene
+  (`plugin-ui/src/theme/readability.ts`: primary and secondary text 4.5:1, tertiary text and icons such as "Worked for
+  14s" and the copy and more-actions glyphs 3:1, never more than the theme's own background gives a colour, over 95% of
+  a coarse sample of the scene's whole resting picture under its glass, taken once by the client; a column can sit
+  anywhere, in a split or beside a wide sidebar), so text never lands on a part of the scene it cannot be read on; 0
+  when the scene is calm enough. Two settings add to it: `readingBlur` (0–24 px) and `readingTint` (0–100 %), in
+  Settings › Appearance or `theme_set { readingBlur, readingTint }`. Where the browser composites on a GPU (the client
+  probes WebGL once and sets `data-dshx-gpu` on `<body>`; a software rasteriser such as SwiftShader or llvmpipe counts
+  as none), the blur is a live `backdrop-filter` over the moving scene. Without one it is a pre-blurred still of the
+  scene, rasterised once and fixed to the viewport like the scene, so nothing is filtered per frame (a live filter there
+  re-blurred the moving scene on the CPU every frame: 8 fps). The scene's glass is a gradient tint for the same reason.
+  Both settings are kept across theme changes; `reset: true` sets them to 0.
+- **One backdrop, no seams.** The scene is one picture fixed to the viewport behind the whole main workbench: docked
+  panes drop the transform and paint containment of Dockview's render overlays (which made each pane re-fit the
+  scene's still to itself), so split conversations share one continuous scene. Only conversation panes show it; every
+  other pane (Settings, Backlog, a view chooser) keeps the theme's own background. The composer seat continues the veil
+  (the same tint over the same still) instead of a band of plain background, and chrome outside the column reads on
+  surfaces the theme hands it: the turn rail on `--dshx-backdrop-chrome` (the theme background at the opacity its
+  tertiary text and strong borders need over the whole scene), the user's bubble with a hairline ring
+  (`--dshx-backdrop-bubble-ring`, the strong border step) so it stands apart from the scene behind it.
+  `plugin-ui/tests/backdrop-readability.test.ts` holds every gallery theme in both schemes, and a saved theme whose
+  palette fights its scene, to all of this over Chrome's own raster of each scene
+  (`plugin-ui/tests/fixtures/scene-samples.json`; `node plugins/@dshfiles/ui-styles/scripts/sample-scenes.mjs`
+  regenerates it after a scene changes).
 - **Dracula.** A built-in saved theme from the [official spec](https://draculatheme.com/spec): Dracula Classic in dark,
   with a night sky (a fixed star field, two star layers twinkling out of phase, a violet moon top right; only `opacity`
   animates, so nothing repaints per frame), and Alucard Classic, Dracula's official light companion, in light. Every

@@ -2,31 +2,54 @@ import { createApiClient, defineClient } from '@dshfiles/dshx/client'
 import { AppearanceModel, type AppearanceSettings } from '@dshfiles/plugin-ui/theme/appearance'
 import type { Rgb } from '@dshfiles/plugin-ui/theme/readability'
 import { SceneCatalog } from '@dshfiles/plugin-ui/theme/scenes'
-import type { SceneSource } from '@dshfiles/plugin-ui/theme/definition'
+import { columnOfSample, GPU_ATTRIBUTE, SCENE_SAMPLE, type SceneSource } from '@dshfiles/plugin-ui/theme/definition'
 import { themeApi } from './api.js'
 import './client.css'
 import { RuntimeTheme, RUNTIME_STYLE_ID } from './runtime-theme.js'
 import { UI_STYLES_SETTINGS_NAMESPACE } from './settings-namespace.js'
 
 /**
- * A coarse sample of a scene's resting picture under the conversation column: the middle 60% of its width, drawn once
- * at 64×40. The theme turns it into the veil its text needs (ReadabilityModel). Undefined when the browser cannot decode
- * the SVG; the theme then uses a safe veil.
+ * A coarse sample of a scene's resting picture, drawn once at `SCENE_SAMPLE` size: the whole picture (where chrome
+ * outside the column sits) and its middle 60% (under the conversation column). The theme turns them into the veil its
+ * text needs (ReadabilityModel). Undefined when the browser cannot decode the SVG; the theme then uses a safe veil.
+ * `plugins/@dshfiles/ui-styles/scripts/sample-scenes.mjs` draws the same samples for the all-theme tests.
  */
-async function sampleScene(svg: string): Promise<readonly Rgb[] | undefined> {
+async function sampleScene(svg: string): Promise<Pick<SceneSource, 'sample' | 'surround'> | undefined> {
   const image = new Image()
   image.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(SceneCatalog.resting(svg))}`
   await image.decode()
   const canvas = document.createElement('canvas')
-  canvas.width = 64
-  canvas.height = 40
+  canvas.width = SCENE_SAMPLE.width
+  canvas.height = SCENE_SAMPLE.height
   const context = canvas.getContext('2d', { willReadFrequently: true })
   if (context === null) return undefined
   context.drawImage(image, 0, 0, canvas.width, canvas.height)
-  const { data } = context.getImageData(13, 0, 38, 40)
+  const { data } = context.getImageData(0, 0, canvas.width, canvas.height)
   const pixels: Rgb[] = []
   for (let index = 0; index + 2 < data.length; index += 4) pixels.push([data[index] ?? 0, data[index + 1] ?? 0, data[index + 2] ?? 0])
-  return pixels
+  return { sample: columnOfSample(pixels), surround: pixels }
+}
+
+/** Renderers that rasterise on the CPU: a WebGL context on one of them means the page is not composited on a GPU. */
+const SOFTWARE_RENDERER = /swiftshader|llvmpipe|lavapipe|softpipe|software|basic render/iu
+
+/**
+ * Whether the browser composites on a GPU, so a live `backdrop-filter` over the moving scene is cheap. A heuristic:
+ * Chrome with hardware acceleration off (or blocklisted) has no WebGL, or only a software one, and refuses a context
+ * that would carry a major performance caveat.
+ */
+function compositesOnGpu(): boolean {
+  try {
+    const canvas = document.createElement('canvas')
+    const gl = canvas.getContext('webgl', { failIfMajorPerformanceCaveat: true })
+    if (gl === null) return false
+    const info = gl.getExtension('WEBGL_debug_renderer_info')
+    const renderer = String(info === null ? gl.getParameter(gl.RENDERER) : gl.getParameter(info.UNMASKED_RENDERER_WEBGL))
+    gl.getExtension('WEBGL_lose_context')?.loseContext()
+    return !SOFTWARE_RENDERER.test(renderer)
+  } catch {
+    return false
+  }
 }
 
 export default defineClient({
@@ -55,8 +78,8 @@ export default defineClient({
         theme.scene({ id }).then(
           async ({ svg }) => {
             // The sample decides the readability veil; without it the theme falls back to a safe one.
-            const sample = await sampleScene(svg).catch(() => undefined)
-            scenes.set(id, sample === undefined ? { svg } : { svg, sample })
+            const sampled = await sampleScene(svg).catch(() => undefined)
+            scenes.set(id, sampled === undefined ? { svg } : { svg, ...sampled })
             loading.delete(id)
             if (!disposed) sync()
           },
@@ -78,12 +101,15 @@ export default defineClient({
       applied = css
     }
     ctx.effect(() => {
+      // Read once: the reading veil's CSS holds both blurs and this attribute picks one.
+      document.body.toggleAttribute(GPU_ATTRIBUTE, compositesOnGpu())
       sync()
       void ctx.configForms.describe().ensure()
       const unsubscribe = form.subscribe(sync)
       return () => {
         disposed = true
         unsubscribe()
+        document.body.removeAttribute(GPU_ATTRIBUTE)
         document.getElementById(RUNTIME_STYLE_ID)?.remove()
       }
     }, 'dshfiles-ui-styles: apply the Appearance theme')

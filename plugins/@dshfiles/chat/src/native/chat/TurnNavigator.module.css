@@ -46,6 +46,10 @@
   cursor: pointer;
   pointer-events: auto;
   transform: translateY(-50%);
+  /* dshfiles (b:d5wg): the rail sits on the scene outside the reading veil; over a theme's backdrop it lays the theme's
+     chrome surface under its ticks and controls (ui-styles `--dshx-backdrop-chrome`). Transparent elsewhere. */
+  border-radius: var(--dsw-radius-md);
+  background: var(--dshx-backdrop-chrome, transparent);
 }
 
 /* The frame's inner scroller: no visible scrollbar, no scroll chaining into
