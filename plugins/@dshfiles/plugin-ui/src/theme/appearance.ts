@@ -5,10 +5,11 @@
  * result differs from the default. The default therefore keeps the static first-paint sheet and injects nothing, so
  * there is no flash and no second copy of the block.
  */
+import { DraculaTheme } from './dracula.ts'
 import { WARM_STONE, type PaletteInput } from './palette.ts'
 import { ThemeCss } from './theme-css.ts'
 
-export type ThemePresetId = 'warm-stone' | 'neutral' | 'high-contrast' | 'slate-blue' | 'moss'
+export type ThemePresetId = 'warm-stone' | 'neutral' | 'high-contrast' | 'slate-blue' | 'moss' | 'dracula'
 export type UiFont = 'geist' | 'system'
 export type CodeFont = 'geist-mono' | 'system'
 
@@ -18,6 +19,8 @@ export interface ThemePreset extends ThemeInput {
   readonly id: ThemePresetId
   readonly label: string
   readonly description: string
+  /** CSS appended after the generated blocks while the preset has no override (exact colours, a backdrop). */
+  readonly extraCss?: (darkSelector: string) => string
 }
 
 /** Every preset; each passes the WCAG AA text checks in both schemes (`plugin-ui/tests/appearance.test.ts`). */
@@ -37,6 +40,16 @@ export const THEME_PRESETS: readonly ThemePreset[] = [
   },
   { id: 'slate-blue', label: 'Slate blue', description: 'Cool blue-grey with a blue accent.', hue: 250, chroma: 0.014, accentHue: 255, contrast: 1 },
   { id: 'moss', label: 'Moss', description: 'Green-grey with a teal accent.', hue: 135, chroma: 0.013, accentHue: 200, contrast: 1 },
+  {
+    id: 'dracula',
+    label: 'Dracula',
+    description: 'The Dracula terminal palette in dark, with a night sky, twinkling stars and a violet moon behind the conversation.',
+    hue: 278,
+    chroma: 0.022,
+    accentHue: 302,
+    contrast: 1,
+    extraCss: DraculaTheme.css,
+  },
 ]
 
 export const DEFAULT_PRESET: ThemePresetId = 'warm-stone'
@@ -93,6 +106,9 @@ function isDefaultInput(input: ThemeInput): boolean {
   )
 }
 
+const isPresetInput = (preset: ThemeInput, input: ThemeInput): boolean =>
+  input.hue === preset.hue && input.chroma === preset.chroma && input.accentHue === preset.accentHue && input.contrast === preset.contrast
+
 /**
  * Runtime selectors: one more class-level part than the static ones, so they win whatever order the two sheets end up
  * in. Light (0,1,2) beats the static light (0,0,2) and the Host dark (0,1,1) but loses to the static dark (0,2,1), so
@@ -135,6 +151,8 @@ function runtimeThemeCss(settings: Partial<AppearanceSettings> | undefined): str
   if (!isDefaultInput(input)) {
     const block = (selector: string, scheme: 'light' | 'dark') => [`${selector} {`, ...ThemeCss.blockDeclarations(input, scheme), '}'].join('\n')
     parts.push(block(RUNTIME_LIGHT_SELECTOR, 'light'), block(RUNTIME_DARK_SELECTOR, 'dark'))
+    const preset = findPreset(settings?.preset ?? DEFAULT_PRESET)
+    if (preset.extraCss !== undefined && isPresetInput(preset, input)) parts.push(preset.extraCss(RUNTIME_DARK_SELECTOR))
   }
   const uiFont = settings?.interfaceFont ?? DEFAULT_APPEARANCE.interfaceFont
   const codeFont = settings?.codeFont ?? DEFAULT_APPEARANCE.codeFont

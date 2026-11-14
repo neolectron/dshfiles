@@ -53,7 +53,7 @@
         {
           "key": "preset",
           "defaultValue": "warm-stone",
-          "constraints": "warm-stone, neutral, high-contrast, slate-blue or moss.",
+          "constraints": "warm-stone, neutral, high-contrast, slate-blue, moss or dracula.",
           "coveredBy": ["ui-styles.appearance-defaults", "ui-styles.appearance-aa"]
         },
         {

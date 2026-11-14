@@ -21,6 +21,7 @@ export const appearanceSettings = defineSettings({
       Schema.const('high-contrast').description('High contrast: darker text and borders'),
       Schema.const('slate-blue').description('Slate blue: blue-grey, blue accent'),
       Schema.const('moss').description('Moss: green-grey, teal accent'),
+      Schema.const('dracula').description('Dracula: the terminal palette, with an animated night sky in dark'),
     ])
       .default('warm-stone')
       .description('Colour preset for every surface, native and plugin, in both light and dark.'),

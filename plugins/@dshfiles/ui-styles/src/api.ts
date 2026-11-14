@@ -6,7 +6,7 @@ import * as Schema from 'effect/Schema'
  * Settings › Appearance fields write the same settings namespace, so the agent and the form cannot disagree.
  */
 
-const presetId = Schema.Literals(['warm-stone', 'neutral', 'high-contrast', 'slate-blue', 'moss'])
+const presetId = Schema.Literals(['warm-stone', 'neutral', 'high-contrast', 'slate-blue', 'moss', 'dracula'])
 const uiFont = Schema.Literals(['geist', 'system'])
 const codeFont = Schema.Literals(['geist-mono', 'system'])
 const readingFont = Schema.Literals(['sans', 'serif'])
