@@ -89,6 +89,56 @@ Then('theme_set answered with the default theme', async ({ page }: { page: Page 
   })
 })
 
+/** A complete light scheme: every role set, so the definition passes validation as an agent's would. */
+const lightScheme = (bg: string) => ({
+  colours: {
+    bg,
+    panel: '#e5e9f0',
+    raised: '#d8dee9',
+    selected: '#d0d6e2',
+    line: '#d8dee9',
+    border: '#c5ccd8',
+    borderStrong: '#aab3c3',
+    strong: '#7b88a1',
+    faint: '#5c677c',
+    muted: '#434c5e',
+    text: '#2e3440',
+    accent: '#3f5f8a',
+    onAccent: bg,
+    success: '#3d6b2a',
+    warning: '#8a5a12',
+    danger: '#a3333d',
+    info: '#2f6680',
+  },
+})
+
+When(
+  'a new thread on the fake model calls theme_define with a light theme {string} on the background {string}',
+  async ({ page }: { page: Page }, id: string, bg: string) => {
+    await page.getByRole('button', { name: 'New session', exact: true }).first().click()
+    await selectModelForNewThread(page, FAKE_MODEL)
+    await sendMessage(page, toolCall('theme_define', { theme: { id, label: 'Nord', light: lightScheme(bg) } }))
+  },
+)
+
+Then('theme_define answered with the saved theme {string}', async ({ page }: { page: Page }, id: string) => {
+  await recordAssertion(page, 'ui-styles-theme-define-result', async () => {
+    await expect.poll(() => lastToolResult(page)).toContain(`"customTheme":"${id}"`)
+    expect(lastToolResult(page)).toContain(`"savedThemes":["${id}"]`)
+  })
+})
+
+Then('the page background token is {string}', async ({ page }: { page: Page }, bg: string) => {
+  await recordAssertion(page, 'ui-styles-saved-theme-applied', async () => {
+    await expect(page.locator(RUNTIME_STYLE)).toHaveCount(1)
+    await expect.poll(async () => (await themeProbe(page)).tone).toBe(bg)
+  })
+})
+
+When('the thread calls theme_remove for {string}', async ({ page }: { page: Page }, id: string) => {
+  await sendMessage(page, toolCall('theme_remove', { id, confirm: true }))
+})
+
 When('the Web UI is reloaded with the theme saved', async ({ page }: { page: Page }) => {
   await reloadPastProviderSetup(page)
 })

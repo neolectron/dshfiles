@@ -5,9 +5,10 @@
  * result differs from the default. The default therefore keeps the static first-paint sheet and injects nothing, so
  * there is no flash and no second copy of the block.
  */
-import { DraculaTheme } from './dracula.ts'
+import { DRACULA_THEME } from './dracula.ts'
 import { WARM_STONE, type PaletteInput } from './palette.ts'
 import { ThemeCss } from './theme-css.ts'
+import { ThemeDefinitionModel, type ThemeDefinition } from './theme-definition.ts'
 
 export type ThemePresetId = 'warm-stone' | 'neutral' | 'high-contrast' | 'slate-blue' | 'moss' | 'dracula'
 export type UiFont = 'geist' | 'system'
@@ -19,8 +20,8 @@ export interface ThemePreset extends ThemeInput {
   readonly id: ThemePresetId
   readonly label: string
   readonly description: string
-  /** CSS appended after the generated blocks while the preset has no override (exact colours, a backdrop). */
-  readonly extraCss?: (darkSelector: string) => string
+  /** Exact colours and backdrop pinned over the generated palette while the preset has no override. */
+  readonly definition?: ThemeDefinition
 }
 
 /** Every preset; each passes the WCAG AA text checks in both schemes (`plugin-ui/tests/appearance.test.ts`). */
@@ -43,14 +44,13 @@ export const THEME_PRESETS: readonly ThemePreset[] = [
   {
     id: 'dracula',
     label: 'Dracula',
-    description: 'The Dracula terminal palette in dark, with a night sky, twinkling stars and a violet moon behind the conversation.',
-    hue: 278,
-    chroma: 0.022,
-    accentHue: 302,
-    contrast: 1,
-    extraCss: DraculaTheme.css,
+    description: 'Official Dracula in dark, with a night sky behind the conversation, and its light companion Alucard.',
+    ...ThemeDefinitionModel.baseInput(DRACULA_THEME),
+    definition: DRACULA_THEME,
   },
 ]
+
+export const PRESET_IDS: readonly string[] = THEME_PRESETS.map(preset => preset.id)
 
 export const DEFAULT_PRESET: ThemePresetId = 'warm-stone'
 
@@ -67,6 +67,10 @@ export interface AppearanceSettings {
   readonly codeFont: CodeFont
   /** Reply prose in the transcript: the interface sans (default) or a system serif (productivity pass T6.6). */
   readonly readingFont: ReadingFont
+  /** Id of a saved theme in `customThemes`; when it names one, it replaces the preset. Empty: the preset. */
+  readonly customTheme?: string
+  /** Saved theme definitions, as stored: each is parsed on use and an invalid one is skipped. */
+  readonly customThemes?: readonly unknown[]
 }
 
 export type ReadingFont = 'sans' | 'serif'
@@ -89,14 +93,39 @@ const clamp = (value: number, min: number, max: number) => Math.min(max, Math.ma
 const pick = (override: number | undefined, fallback: number, key: keyof typeof APPEARANCE_BOUNDS) =>
   typeof override === 'number' && Number.isFinite(override) ? clamp(override, APPEARANCE_BOUNDS[key].min, APPEARANCE_BOUNDS[key].max) : fallback
 
-/** The generator input for some Appearance settings: the preset, then each override inside its bounds. */
-function resolveAppearance(settings: Partial<AppearanceSettings> | undefined): ThemeInput {
+/** The saved themes that parse; an invalid entry or one reusing a preset id is skipped, later duplicates too. */
+function customThemes(settings: Partial<AppearanceSettings> | undefined): ThemeDefinition[] {
+  const out: ThemeDefinition[] = []
+  for (const raw of settings?.customThemes ?? []) {
+    const { definition } = ThemeDefinitionModel.parse(raw, PRESET_IDS)
+    if (definition !== undefined && !out.some(theme => theme.id === definition.id)) out.push(definition)
+  }
+  return out
+}
+
+/** The theme in effect before overrides: the chosen saved theme when it exists, else the preset. */
+export interface ActiveTheme {
+  readonly base: ThemeInput
+  readonly definition?: ThemeDefinition
+}
+
+function activeTheme(settings: Partial<AppearanceSettings> | undefined): ActiveTheme {
+  const wanted = settings?.customTheme ?? ''
+  const custom = wanted === '' ? undefined : customThemes(settings).find(theme => theme.id === wanted)
+  if (custom !== undefined) return { base: ThemeDefinitionModel.baseInput(custom), definition: custom }
   const preset = findPreset(settings?.preset ?? DEFAULT_PRESET)
+  const base = { hue: preset.hue, chroma: preset.chroma, accentHue: preset.accentHue, contrast: preset.contrast }
+  return preset.definition === undefined ? { base } : { base, definition: preset.definition }
+}
+
+/** The generator input for some Appearance settings: the active theme, then each override inside its bounds. */
+function resolveAppearance(settings: Partial<AppearanceSettings> | undefined): ThemeInput {
+  const { base } = activeTheme(settings)
   return {
-    hue: pick(settings?.greyHue, preset.hue, 'hue'),
-    chroma: pick(settings?.greyTint, preset.chroma, 'chroma'),
-    accentHue: pick(settings?.accentHue, preset.accentHue, 'accentHue'),
-    contrast: pick(settings?.contrast, preset.contrast, 'contrast'),
+    hue: pick(settings?.greyHue, base.hue, 'hue'),
+    chroma: pick(settings?.greyTint, base.chroma, 'chroma'),
+    accentHue: pick(settings?.accentHue, base.accentHue, 'accentHue'),
+    contrast: pick(settings?.contrast, base.contrast, 'contrast'),
   }
 }
 
@@ -147,12 +176,14 @@ export const DEFAULT_FONT_STACKS = { text: UI_FONT_STACKS.geist, code: CODE_FONT
  */
 function runtimeThemeCss(settings: Partial<AppearanceSettings> | undefined): string {
   const input = resolveAppearance(settings)
+  const { base, definition } = activeTheme(settings)
+  // An override asks for the generated palette: the definition's exact colours and backdrop apply only without one.
+  const pinned = definition !== undefined && isPresetInput(base, input) ? definition : undefined
   const parts: string[] = []
-  if (!isDefaultInput(input)) {
+  if (!isDefaultInput(input) || pinned !== undefined) {
     const block = (selector: string, scheme: 'light' | 'dark') => [`${selector} {`, ...ThemeCss.blockDeclarations(input, scheme), '}'].join('\n')
     parts.push(block(RUNTIME_LIGHT_SELECTOR, 'light'), block(RUNTIME_DARK_SELECTOR, 'dark'))
-    const preset = findPreset(settings?.preset ?? DEFAULT_PRESET)
-    if (preset.extraCss !== undefined && isPresetInput(preset, input)) parts.push(preset.extraCss(RUNTIME_DARK_SELECTOR))
+    if (pinned !== undefined) parts.push(ThemeDefinitionModel.css(pinned, { light: RUNTIME_LIGHT_SELECTOR, dark: RUNTIME_DARK_SELECTOR }))
   }
   const uiFont = settings?.interfaceFont ?? DEFAULT_APPEARANCE.interfaceFont
   const codeFont = settings?.codeFont ?? DEFAULT_APPEARANCE.codeFont
@@ -184,6 +215,8 @@ function presetThemeCss(id: ThemePresetId): string {
 /** Appearance settings resolved to theme presets, inputs and runtime CSS. */
 export class AppearanceModel {
   static readonly findPreset = findPreset
+  static readonly customThemes = customThemes
+  static readonly activeTheme = activeTheme
   static readonly resolveAppearance = resolveAppearance
   static readonly isDefaultInput = isDefaultInput
   static readonly runtimeThemeCss = runtimeThemeCss

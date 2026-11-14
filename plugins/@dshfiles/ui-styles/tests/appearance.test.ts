@@ -7,10 +7,12 @@ import { describe, expect, it } from 'vitest'
 import { themeApi } from '../src/api.ts'
 import { RuntimeTheme, RUNTIME_CACHE_KEY, RUNTIME_STYLE_ID } from '../src/runtime-theme.ts'
 import { appearanceSettings, UI_STYLES_SETTINGS_NAMESPACE } from '../src/settings.ts'
-import { ThemeStateModel } from '../src/theme-state.ts'
+import { InvalidThemeDefinition, ThemeStateModel } from '../src/theme-state.ts'
 
 const patch = readFileSync(join(process.cwd(), 'cordis.patch.yml'), 'utf8')
 const fonts = readFileSync(join(process.cwd(), 'src/fonts.css'), 'utf8')
+/** The defaults as normalised from storage: no saved theme in use, none saved. */
+const STORED_DEFAULT = { ...DEFAULT_APPEARANCE, customTheme: '', customThemes: [] }
 
 describe('Appearance settings', () => {
   it('lives in the namespace of the Loader row', () => {
@@ -20,7 +22,7 @@ describe('Appearance settings', () => {
 
   it('defaults to the static first-paint theme (warm stone, Geist, Geist Mono)', () => {
     const value = appearanceSettings.schema({})
-    expect(ThemeStateModel.normaliseAppearance(value)).toEqual(DEFAULT_APPEARANCE)
+    expect(ThemeStateModel.normaliseAppearance(value)).toEqual(STORED_DEFAULT)
     expect(ThemeStateModel.themeState(ThemeStateModel.normaliseAppearance(value), 'light').isDefault).toBe(true)
   })
 
@@ -49,8 +51,8 @@ describe('theme_set transitions', () => {
     const custom = ThemeStateModel.nextAppearance(start, { accentHue: 20 })
     expect(custom).toMatchObject({ preset: 'warm-stone', accentHue: 20 })
     const moss = ThemeStateModel.nextAppearance(custom, { preset: 'moss' })
-    expect(moss).toEqual({ ...DEFAULT_APPEARANCE, preset: 'moss' })
-    expect(ThemeStateModel.nextAppearance(custom, { preset: 'moss', contrast: 1.2 })).toEqual({ ...DEFAULT_APPEARANCE, preset: 'moss', contrast: 1.2 })
+    expect(moss).toEqual({ ...STORED_DEFAULT, preset: 'moss' })
+    expect(ThemeStateModel.nextAppearance(custom, { preset: 'moss', contrast: 1.2 })).toEqual({ ...STORED_DEFAULT, preset: 'moss', contrast: 1.2 })
   })
 
   it('keeps overrides across a font change and clears one with null', () => {
@@ -64,7 +66,7 @@ describe('theme_set transitions', () => {
     const custom = ThemeStateModel.nextAppearance(start, { preset: 'high-contrast', interfaceFont: 'system', accentHue: 30 })
     expect(ThemeStateModel.themeState(custom, 'dark').isDefault).toBe(false)
     const reset = ThemeStateModel.nextAppearance(custom, { reset: true })
-    expect(reset).toEqual(DEFAULT_APPEARANCE)
+    expect(reset).toEqual(STORED_DEFAULT)
     expect(ThemeStateModel.themeState(reset, 'dark')).toMatchObject({ isDefault: true, preset: 'warm-stone', greyHue: 65, accentHue: 270, scheme: 'dark' })
   })
 
@@ -77,7 +79,7 @@ describe('theme_set transitions', () => {
         Effect.gen(function* () {
           const snapshot = yield* settings.snapshot
           const next = ThemeStateModel.nextAppearance(ThemeStateModel.normaliseAppearance(snapshot.value), input)
-          yield* settings.replace(appearanceSettings.schema(next), snapshot.revision)
+          yield* settings.replace(appearanceSettings.schema({ ...next, customThemes: [...(next.customThemes ?? [])] }), snapshot.revision)
           return ThemeStateModel.themeState(ThemeStateModel.normaliseAppearance(yield* settings.get), 'light')
         })
       const before = ThemeStateModel.themeState(ThemeStateModel.normaliseAppearance(yield* settings.get), 'light')
@@ -95,6 +97,76 @@ describe('theme_set transitions', () => {
   })
 })
 
+const role = (bg: string, text: string, accent: string) => ({
+  bg,
+  panel: bg,
+  raised: bg,
+  selected: bg,
+  line: bg,
+  border: bg,
+  borderStrong: bg,
+  strong: text,
+  faint: text,
+  muted: text,
+  text,
+  accent,
+  onAccent: bg,
+  success: text,
+  warning: text,
+  danger: text,
+  info: text,
+})
+const NORD = { id: 'nord', label: 'Nord', dark: { colours: role('#2e3440', '#eceff4', '#88c0d0') } }
+
+describe('saved themes', () => {
+  const start = ThemeStateModel.normaliseAppearance({})
+
+  it('saves a theme, switches to it live, and replaces it when saved again', () => {
+    const withOverride = ThemeStateModel.nextAppearance(start, { accentHue: 20 })
+    const saved = ThemeStateModel.defineTheme(withOverride, { theme: NORD })
+    expect(saved).toMatchObject({ customTheme: 'nord' })
+    expect(saved).not.toHaveProperty('accentHue')
+    const state = ThemeStateModel.themeState(saved, 'dark')
+    expect(state).toMatchObject({ customTheme: 'nord', isDefault: false, contrastWarnings: [] })
+    expect(state.savedThemes).toEqual([{ id: 'nord', label: 'Nord', description: '', schemes: ['dark'], backdrop: false }])
+    const renamed = ThemeStateModel.defineTheme(saved, { theme: { ...NORD, label: 'Nord Aurora' } })
+    expect(ThemeStateModel.themeState(renamed, 'dark').savedThemes.map(theme => theme.label)).toEqual(['Nord Aurora'])
+  })
+
+  it('keeps the current theme when saving with apply: false, and returns to a preset with theme_set', () => {
+    const kept = ThemeStateModel.defineTheme(start, { theme: NORD, apply: false })
+    expect(kept.customTheme).toBe('')
+    const using = ThemeStateModel.nextAppearance(kept, { customTheme: 'nord' })
+    expect(using.customTheme).toBe('nord')
+    expect(ThemeStateModel.nextAppearance(using, { preset: 'moss' })).toMatchObject({ preset: 'moss', customTheme: '' })
+    expect(ThemeStateModel.nextAppearance(using, { customTheme: null }).customTheme).toBe('')
+    // Reset keeps the saved themes, so the user can come back to them.
+    expect(ThemeStateModel.nextAppearance(using, { reset: true }).customThemes).toHaveLength(1)
+  })
+
+  it('refuses an invalid theme or an unknown saved theme with every problem', () => {
+    expect(() => ThemeStateModel.defineTheme(start, { theme: { ...NORD, id: 'dracula' } as never })).toThrow(InvalidThemeDefinition)
+    expect(() => ThemeStateModel.defineTheme(start, { theme: { id: 'x', label: 'X', dark: { colours: { bg: 'nope' } } } as never })).toThrow(
+      /dark\.colours\.bg/u,
+    )
+    expect(() => ThemeStateModel.nextAppearance(start, { customTheme: 'missing' })).toThrow(/no saved theme "missing"/u)
+  })
+
+  it('removes a theme and falls back to the preset when it was in use', () => {
+    const saved = ThemeStateModel.defineTheme(start, { theme: NORD })
+    const removed = ThemeStateModel.removeTheme(saved, 'nord')
+    expect(removed).toMatchObject({ customTheme: '', customThemes: [] })
+    expect(ThemeStateModel.themeState(removed, 'dark').isDefault).toBe(true)
+    expect(() => ThemeStateModel.removeTheme(removed, 'nord')).toThrow(InvalidThemeDefinition)
+  })
+
+  it('stores a saved theme through the settings contract', () => {
+    const saved = ThemeStateModel.defineTheme(start, { theme: NORD })
+    const stored = appearanceSettings.schema({ ...saved, customThemes: [...(saved.customThemes ?? [])] })
+    expect(ThemeStateModel.normaliseAppearance(stored)).toMatchObject({ customTheme: 'nord', customThemes: [NORD] })
+  })
+})
+
 describe('theme tools', () => {
   it('binds theme_get (read-only) and theme_set (write, only on request, with a reset path)', () => {
     const { get, set } = themeApi.methods
@@ -102,6 +174,14 @@ describe('theme tools', () => {
     expect(set.tool).toMatchObject({ name: 'theme_set', readOnly: false })
     expect(set.description).toMatch(/only when the user asked/u)
     expect(set.description).toMatch(/reset: true/u)
+  })
+
+  it('binds theme_define and theme_remove as write tools, remove behind an explicit confirm', () => {
+    const { define, remove } = themeApi.methods
+    expect(define.tool).toMatchObject({ name: 'theme_define', readOnly: false })
+    expect(define.description).toMatch(/only when the user asked/u)
+    expect(remove.tool).toMatchObject({ name: 'theme_remove', readOnly: false })
+    expect(remove.description).toMatch(/confirm: true/u)
   })
 })
 

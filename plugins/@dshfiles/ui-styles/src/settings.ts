@@ -21,7 +21,7 @@ export const appearanceSettings = defineSettings({
       Schema.const('high-contrast').description('High contrast: darker text and borders'),
       Schema.const('slate-blue').description('Slate blue: blue-grey, blue accent'),
       Schema.const('moss').description('Moss: green-grey, teal accent'),
-      Schema.const('dracula').description('Dracula: the terminal palette, with an animated night sky in dark'),
+      Schema.const('dracula').description('Dracula: official Dracula in dark with an animated night sky, Alucard in light'),
     ])
       .default('warm-stone')
       .description('Colour preset for every surface, native and plugin, in both light and dark.'),
@@ -41,6 +41,15 @@ export const appearanceSettings = defineSettings({
     ])
       .default('sans')
       .description('Font for reply prose in threads. Serif uses a font already on your device; code and tables keep their fonts.'),
+    customTheme: Schema.string()
+      .default('')
+      .description(
+        'Id of a saved theme to use instead of the preset. Ask the agent for any theme ("a Nord theme", "Tokyo Night with falling snow"); it saves it and switches to it. Empty uses the preset.',
+      ),
+    customThemes: Schema.array(Schema.any())
+      .default([])
+      .hidden()
+      .description('Saved theme definitions (exact colours per scheme, syntax colours, optional backdrop). Written by the theme_define agent tool.'),
   }).description('Colours and fonts for every surface, native and plugin, in light and dark. Light, dark or system is set in General › Appearance.'),
   applies: 'live',
 })

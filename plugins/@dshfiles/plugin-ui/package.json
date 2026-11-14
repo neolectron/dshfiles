@@ -62,6 +62,10 @@
       "types": "./src/theme/appearance.ts",
       "default": "./src/theme/appearance.ts"
     },
+    "./theme/definition": {
+      "types": "./src/theme/theme-definition.ts",
+      "default": "./src/theme/theme-definition.ts"
+    },
     "./vite": {
       "types": "./src/vite.ts",
       "default": "./src/vite.ts"

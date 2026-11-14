@@ -34,21 +34,16 @@
     {
       "id": "appearance-theme",
       "title": "Appearance theme: presets, palette and fonts",
-      "summary": "Settings \u203a General \u203a Appearance picks a colour preset (Warm stone default, Neutral, High contrast, Slate blue, Moss), optional hue, tint, accent and contrast overrides, and the UI and code fonts. The client regenerates the palette with the plugin-ui generator and injects it over the static first-paint theme only when it differs from the default, so native core surfaces (--dsw-* remap) and plugins follow at once in light and dark; theme_get reads it and theme_set changes or resets it.",
+      "summary": "Settings › General › Appearance picks a colour preset (Warm stone default, Neutral, High contrast, Slate blue, Moss, Dracula), optional hue, tint, accent and contrast overrides, and the UI and code fonts. The client regenerates the palette with the plugin-ui generator and injects it over the static first-paint theme only when it differs from the default, so native core surfaces (--dsw-* remap) and plugins follow at once in light and dark; theme_get reads it and theme_set changes or resets it.",
       "onboarding": {
         "firstAction": "Open Settings › General › Appearance and pick a preset, or change the accent and the interface font.",
         "doneWhen": "The whole app takes the new colours and fonts at once, light and dark."
       },
-      "reach": [
-        "click button \"Account menu\"",
-        "click menuitem \"Settings*\"",
-        "click button \"Appearance\"",
-        "expect text \"Colour preset for every surface*\""
-      ],
+      "reach": ["click button \"Settings\"", "click text \"All settings\"", "click button \"Appearance\"", "expect text \"Colour preset for every surface*\""],
       "surfaces": ["client", "host", "settings", "tool"],
       "surface": "settingsSection",
       "destination": "settings",
-      "currentSurface": "Settings \u203a General \u203a Appearance; agent tools theme_get / theme_set",
+      "currentSurface": "Settings › General › Appearance; agent tools theme_get / theme_set",
       "configuration": [
         {
           "key": "preset",
@@ -59,13 +54,13 @@
         {
           "key": "greyHue / greyTint / accentHue / contrast",
           "defaultValue": "empty (the preset's value)",
-          "constraints": "hue and accentHue 0\u2013360, chroma 0\u20130.03, contrast 1\u20131.5; every corner keeps WCAG AA text.",
+          "constraints": "hue and accentHue 0–360, chroma 0–0.03, contrast 1–1.5; every corner keeps WCAG AA text.",
           "coveredBy": ["ui-styles.appearance-bounds", "ui-styles.appearance-aa"]
         },
         {
           "key": "interfaceFont / codeFont",
           "defaultValue": "geist / geist-mono",
-          "constraints": "geist or system; geist-mono or system. A family typed in Settings \u203a Font still wins.",
+          "constraints": "geist or system; geist-mono or system. A family typed in Settings › Font still wins.",
           "coveredBy": ["ui-styles.appearance-defaults"]
         }
       ],
@@ -108,7 +103,76 @@
           "kind": "unit-test",
           "id": "ui-styles.theme-tool-round-trip",
           "file": "plugins/@dshfiles/ui-styles/tests/appearance.test.ts",
-          "testName": "round-trips get \u2192 set \u2192 reset through the Host settings service"
+          "testName": "round-trips get → set → reset through the Host settings service"
+        }
+      ],
+      "telemetry": [
+        {
+          "kind": "automatic",
+          "source": "api-dispatch"
+        },
+        {
+          "kind": "automatic",
+          "source": "agent-tool"
+        }
+      ]
+    },
+    {
+      "id": "saved-themes",
+      "title": "Saved themes: any theme on request, and Dracula",
+      "summary": "A theme is data: exact colours per scheme (eleven neutral steps, accent and status colours), optional syntax colours and an optional animated backdrop behind the conversation. The agent saves any theme the user asks for with theme_define and it applies live, no restart; theme_set customTheme switches between saved themes and presets; theme_remove deletes one. The built-in Dracula preset uses the same format: official Dracula Classic in dark with a night sky (twinkling stars, a violet moon), official Alucard Classic in light.",
+      "onboarding": {
+        "firstAction": "Ask the agent for a theme, for example “make DSH look like Nord”, or pick the Dracula preset in Settings › Appearance.",
+        "doneWhen": "The app takes the theme's exact colours at once, with its backdrop behind the conversation if it has one."
+      },
+      "surfaces": ["client", "host", "settings", "tool"],
+      "surface": "settingsSection",
+      "destination": "settings",
+      "currentSurface": "Agent tools theme_define / theme_set (customTheme) / theme_remove / theme_get; Settings › General › Appearance (Custom theme id, Dracula preset)",
+      "configuration": [
+        {
+          "key": "customTheme",
+          "defaultValue": "empty (the preset)",
+          "constraints": "the id of a saved theme; theme_set refuses an unknown id.",
+          "coveredBy": ["ui-styles.saved-theme-lifecycle"]
+        },
+        {
+          "key": "customThemes",
+          "defaultValue": "[]",
+          "constraints": "hidden; written by theme_define. Invalid entries are skipped; a backdrop has 1–3 layers of declarations without url(), @import or braces.",
+          "coveredBy": ["ui-styles.theme-definition-parse", "ui-styles.saved-theme-lifecycle"]
+        }
+      ],
+      "states": ["preset", "saved-theme", "saved-theme-overridden", "saved-theme-missing"],
+      "failureModes": [
+        "A definition with a missing or malformed colour, a preset id, or a backdrop that loads anything is refused with every problem listed, so the agent can fix it in one retry.",
+        "The chosen saved theme was deleted or became invalid: the preset applies.",
+        "Text under WCAG AA is reported in contrastWarnings; the theme still applies so an official palette is not altered."
+      ],
+      "externalDependencies": [],
+      "verification": [
+        {
+          "kind": "gherkin",
+          "id": "ui-styles.saved-theme-agent",
+          "featureFile": "tooling/dshx/e2e/features/ui-styles.feature"
+        },
+        {
+          "kind": "unit-test",
+          "id": "ui-styles.theme-definition-parse",
+          "file": "plugins/@dshfiles/plugin-ui/tests/theme-definition.test.ts",
+          "testName": "keeps a backdrop self-contained: no url(), @import or a brace that escapes its layer"
+        },
+        {
+          "kind": "unit-test",
+          "id": "ui-styles.saved-theme-lifecycle",
+          "file": "plugins/@dshfiles/ui-styles/tests/appearance.test.ts",
+          "testName": "saves a theme, switches to it live, and replaces it when saved again"
+        },
+        {
+          "kind": "unit-test",
+          "id": "ui-styles.dracula-official",
+          "file": "plugins/@dshfiles/plugin-ui/tests/theme-definition.test.ts",
+          "testName": "is a valid definition with the official Dracula and Alucard backgrounds"
         }
       ],
       "telemetry": [

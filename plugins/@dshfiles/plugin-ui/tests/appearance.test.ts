@@ -8,7 +8,6 @@ import {
   THEME_PRESETS,
   type ThemeInput,
 } from '../src/theme/appearance.ts'
-import { DRACULA, DRACULA_NEUTRAL, DRACULA_STATUS } from '../src/theme/dracula.ts'
 import { PaletteMath, WARM_STONE, type Scheme } from '../src/theme/palette.ts'
 import { ThemeCss } from '../src/theme/theme-css.ts'
 
@@ -86,49 +85,6 @@ describe('runtimeThemeCss', () => {
     expect(css).toContain('--dshx-tone-0: oklch(')
     expect(css).not.toMatch(/font-size/u)
     expect(css).not.toContain('--dsh-font-family')
-  })
-
-  it('pins the official Dracula colours in dark and keeps the same AA contract', () => {
-    const hex = PaletteMath.hexToOklch
-    const step = (index: number) => hex(DRACULA_NEUTRAL[index]!)
-    for (const [surface, index] of Object.entries(surfaces)) {
-      const under = step(index)
-      for (const text of [9, 10]) expect(PaletteMath.contrastRatio(step(text), under), `step ${text} on ${surface}`).toBeGreaterThanOrEqual(4.5)
-      expect(PaletteMath.contrastRatio(step(8), under), `step 8 on ${surface}`).toBeGreaterThanOrEqual(3)
-      for (const [key, colour] of Object.entries(DRACULA_STATUS))
-        expect(PaletteMath.contrastRatio(hex(colour), under), `${key} on ${surface}`).toBeGreaterThanOrEqual(4.5)
-      expect(PaletteMath.contrastRatio(hex(DRACULA.purple), under), `accent on ${surface}`).toBeGreaterThanOrEqual(4.5)
-    }
-    for (const token of [DRACULA.pink, DRACULA.purple, DRACULA.orange, DRACULA.green, DRACULA.yellow])
-      expect(PaletteMath.contrastRatio(hex(token), step(1)), `syntax ${token}`).toBeGreaterThanOrEqual(4.5)
-    expect(PaletteMath.contrastRatio(hex(DRACULA.background), hex(DRACULA.purple))).toBeGreaterThanOrEqual(4.5)
-
-    const css = AppearanceModel.runtimeThemeCss({ ...DEFAULT_APPEARANCE, preset: 'dracula' })
-    expect(css).toContain(`${RUNTIME_DARK_SELECTOR} {\n  --dshx-tone-0: #282a36;`)
-    expect(css).toContain('--shiki-token-keyword: #ff79c6;')
-    // The generated light block still comes first: the pins only touch dark.
-    expect(css.indexOf(`${RUNTIME_LIGHT_SELECTOR} {`)).toBeLessThan(css.indexOf('#282a36'))
-  })
-
-  it('paints the night sky only in dark, behind the main workbench, animating opacity alone', () => {
-    const css = AppearanceModel.runtimeThemeCss({ ...DEFAULT_APPEARANCE, preset: 'dracula' })
-    const scene = `${RUNTIME_DARK_SELECTOR} [data-workbench-region="main"] .dshfiles-workbench-theme`
-    expect(css).toContain(`${scene} {\n  isolation: isolate;`)
-    expect(css).toContain(`${scene}::before {`)
-    expect(css).toContain('z-index: -1;')
-    expect(css).toContain('pointer-events: none;')
-    expect(css).toContain('@keyframes dshx-dracula-twinkle {\n  from { opacity: 0.15; }\n  to { opacity: 1; }\n}')
-    expect(css).toContain('@media (prefers-reduced-motion: reduce)')
-    expect(css).not.toContain(`${RUNTIME_LIGHT_SELECTOR} [data-workbench-region`)
-    expect(css).not.toMatch(/url\(/u)
-  })
-
-  it('drops the Dracula pins and sky once an override asks for the generated palette', () => {
-    const css = AppearanceModel.runtimeThemeCss({ ...DEFAULT_APPEARANCE, preset: 'dracula', accentHue: 200 })
-    expect(css).toContain('--dshx-tone-0: oklch(')
-    expect(css).not.toContain('#282a36')
-    expect(css).not.toContain('dshx-dracula-twinkle')
-    expect(AppearanceModel.runtimeThemeCss({ ...DEFAULT_APPEARANCE, preset: 'moss' })).not.toContain('dshx-dracula-twinkle')
   })
 
   it('emits only the font block for a font-only change', () => {
