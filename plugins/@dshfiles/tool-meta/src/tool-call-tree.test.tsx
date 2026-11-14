@@ -2,8 +2,8 @@ import type { StoredEntry } from '@deepseek-ai/dsh-client-ui-slots'
 import type { ToolCallOwnerProps } from '@deepseek-ai/dsh-client-ui-tool/client'
 import { cleanup, render, screen } from '@testing-library/react'
 import type { ComponentType, ReactNode } from 'react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
-import { installToolCallTreeWrapper, isToolCallTreeWrapped, type ToolMetaComponent } from './tool-call-tree.js'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { installToolCallTreeWrapper, isToolCallTreeWrapped, RESERVE_PROPERTY, RESERVED_ROW_ATTRIBUTE, type ToolMetaComponent } from './tool-call-tree.js'
 
 afterEach(cleanup)
 
@@ -92,6 +92,87 @@ describe('installToolCallTreeWrapper', () => {
     expect(entry.component).toBe(wrapped)
     dispose()
     expect(entry.component).toBe(NativeTree)
+  })
+
+  describe('reserving the label width in the card header', () => {
+    /** The label width the layout reports; 0 stands for a label the narrow tier hides. */
+    let labelWidth = 0
+    beforeEach(() => {
+      labelWidth = 92.4
+      // jsdom has no layout: the label reports `labelWidth`, and the observer reports once on observe like a real one.
+      vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+        const width = this.hasAttribute('data-dshfiles-tool-meta-label') ? labelWidth : 0
+        return { width, height: 28, x: 0, y: 0, top: 0, left: 0, right: width, bottom: 28, toJSON: () => ({}) }
+      })
+      vi.stubGlobal(
+        'ResizeObserver',
+        class implements ResizeObserver {
+          constructor(private readonly onResize: ResizeObserverCallback) {}
+          observe(target: Element): void {
+            // SAFETY: the frame's callback reads only `target` from an entry.
+            this.onResize([{ target } as ResizeObserverEntry], this)
+          }
+          unobserve(): void {}
+          disconnect(): void {}
+        },
+      )
+    })
+    afterEach(() => {
+      vi.restoreAllMocks()
+      vi.unstubAllGlobals()
+    })
+
+    interface NestingOwner {
+      readonly callId: string
+      readonly nested?: () => ReactNode
+    }
+    /** The real tree renders a child call inside its parent card's body, through the same renderSlot. */
+    const NestingTree = (props: { readonly renderSlot: (key: 'tool.call.toolview', owner: NestingOwner) => ReactNode }) =>
+      props.renderSlot('tool.call.toolview', { callId: 'parent', nested: () => props.renderSlot('tool.call.toolview', { callId: 'child' }) })
+    /** A native disclosure card: header > expandable row, then a body holding its own disclosure and any nested call. */
+    const disclosureCard = (_key: 'tool.call.toolview', owner: NestingOwner): ReactNode => (
+      <div data-slot="tool.call.toolview" style={{ display: 'contents' }}>
+        <div data-testid={`card-${owner.callId}`}>
+          <div data-disclosure-header="" data-testid={`header-${owner.callId}`}>
+            <div data-disclosure-row="" data-expandable="" role="button">
+              read · Showing 2 lines
+            </div>
+          </div>
+          <div>
+            <div data-disclosure-header="" data-testid={`body-${owner.callId}`}>
+              <div data-disclosure-row="" data-expandable="" role="button">
+                hunk
+              </div>
+            </div>
+            {owner.nested?.()}
+          </div>
+        </div>
+      </div>
+    )
+    const renderNesting = (): void => {
+      const entry: StoredEntry = { component: NestingTree, options: { key: 'tool-call' } }
+      installToolCallTreeWrapper({ slots: ledger([entry]), Meta })
+      // SAFETY: the wrapper stored its component in the entry; NestingTree reads only renderSlot.
+      const Wrapped = entry.component as ComponentType<{ readonly renderSlot: typeof disclosureCard }>
+      render(<Wrapped renderSlot={disclosureCard} />)
+    }
+
+    it("pads each card's own header by its label width, never a row deeper in the body", () => {
+      renderNesting()
+      expect(screen.getByTestId('header-parent').hasAttribute(RESERVED_ROW_ATTRIBUTE)).toBe(true)
+      expect(screen.getByTestId('header-child').hasAttribute(RESERVED_ROW_ATTRIBUTE)).toBe(true)
+      expect(screen.getByTestId('body-parent').hasAttribute(RESERVED_ROW_ATTRIBUTE)).toBe(false)
+      expect(screen.getByTestId('body-child').hasAttribute(RESERVED_ROW_ATTRIBUTE)).toBe(false)
+      const frames = document.querySelectorAll<HTMLElement>('[data-dshfiles-tool-meta-frame]')
+      expect([...frames].map(frame => frame.style.getPropertyValue(RESERVE_PROPERTY))).toEqual(['93px', '93px'])
+      expect(frames[0]?.className).toContain('dshx:[&_[data-dshfiles-tool-meta-row]]:pe-[calc(var(--dshfiles-tool-meta-reserve)+0.25rem)]!')
+    })
+
+    it('reserves nothing while the label is hidden', () => {
+      labelWidth = 0
+      renderNesting()
+      expect(document.querySelectorAll(`[${RESERVED_ROW_ATTRIBUTE}]`)).toHaveLength(0)
+    })
   })
 
   it('warns once when the renderer stops dispatching through renderSlot', () => {

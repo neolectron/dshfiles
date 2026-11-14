@@ -96,7 +96,7 @@ export const ToolMetaLine = ({ owner, t }: ToolMetaLineProps): ReactElement | nu
               aria-label={label}
               data-dshfiles-tool-meta={timing.kind}
               className={cn(
-                'dshx-root dshx:pointer-events-auto dshx:shrink-0 dshx:bg-background dshx:pl-2 dshx:whitespace-nowrap dshx:text-xs dshx:tabular-nums dshx:text-muted-foreground',
+                'dshx-root dshx:pointer-events-auto dshx:shrink-0 dshx:rounded-sm dshx:bg-background dshx:px-1.5 dshx:whitespace-nowrap dshx:text-xs dshx:tabular-nums dshx:text-muted-foreground',
                 timing.kind === 'running' && 'dshx:text-foreground',
               )}
             >
