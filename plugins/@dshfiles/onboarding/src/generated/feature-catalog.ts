@@ -27564,7 +27564,7 @@ export const FEATURE_CATALOG: FeatureCatalog = {
       "key": "ui-styles#saved-themes",
       "plugin": "ui-styles",
       "id": "saved-themes",
-      "title": "Saved themes: any theme on request, and Dracula",
+      "title": "Saved and gallery themes: any theme on request, Claude Code scenes, and Dracula",
       "summary": "A theme is data: exact colours per scheme (eleven neutral steps, accent and status colours), optional syntax colours and an optional animated backdrop behind the conversation. The agent saves any theme the user asks for with theme_define and it applies live, no restart; theme_se…",
       "destination": "settings",
       "currentSurface": "Agent tools theme_define / theme_set (customTheme) / theme_remove / theme_get; Settings › General › Appearance (Custom theme id, Dracula preset)",

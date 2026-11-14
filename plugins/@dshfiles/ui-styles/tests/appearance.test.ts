@@ -12,7 +12,7 @@ import { InvalidThemeDefinition, ThemeStateModel } from '../src/theme-state.ts'
 const patch = readFileSync(join(process.cwd(), 'cordis.patch.yml'), 'utf8')
 const fonts = readFileSync(join(process.cwd(), 'src/fonts.css'), 'utf8')
 /** The defaults as normalised from storage: no saved theme in use, none saved. */
-const STORED_DEFAULT = { ...DEFAULT_APPEARANCE, customTheme: '', customThemes: [] }
+const STORED_DEFAULT = { ...DEFAULT_APPEARANCE, readingPanel: 'off', customTheme: '', customThemes: [] }
 
 describe('Appearance settings', () => {
   it('lives in the namespace of the Loader row', () => {
@@ -159,6 +159,16 @@ describe('saved themes', () => {
     expect(state.galleryThemes.map(theme => theme.id)).toContain('night-reef')
     expect(() => ThemeStateModel.defineTheme(start, { theme: { ...NORD, id: 'aurora' } })).toThrow(/built-in theme/u)
     expect(() => ThemeStateModel.removeTheme(lagoon, 'honu-lagoon')).toThrow(/built-in gallery theme/u)
+  })
+
+  it('keeps the reading panel across theme changes and turns it off on reset', () => {
+    const panel = ThemeStateModel.nextAppearance(start, { readingPanel: 'soft' })
+    const lagoon = ThemeStateModel.nextAppearance(panel, { customTheme: 'honu-lagoon' })
+    expect(ThemeStateModel.themeState(lagoon, 'light')).toMatchObject({ readingPanel: 'soft', customTheme: 'honu-lagoon' })
+    expect(ThemeStateModel.defineTheme(panel, { theme: NORD }).readingPanel).toBe('soft')
+    expect(ThemeStateModel.nextAppearance(lagoon, { reset: true }).readingPanel).toBe('off')
+    expect(appearanceSettings.schema({ readingPanel: 'strong' }).readingPanel).toBe('strong')
+    expect(() => appearanceSettings.schema({ readingPanel: 'max' as never })).toThrow()
   })
 
   it('removes a theme and falls back to the preset when it was in use', () => {

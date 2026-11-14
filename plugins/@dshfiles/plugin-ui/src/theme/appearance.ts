@@ -9,7 +9,7 @@ import { DRACULA_THEME } from './dracula.ts'
 import { GALLERY_IDS, GALLERY_THEMES } from './gallery.ts'
 import { WARM_STONE, type PaletteInput } from './palette.ts'
 import { ThemeCss } from './theme-css.ts'
-import { ThemeDefinitionModel, type SceneSources, type ThemeDefinition } from './theme-definition.ts'
+import { ThemeDefinitionModel, type ReadingPanel, type SceneSources, type ThemeDefinition } from './theme-definition.ts'
 
 export type ThemePresetId = 'warm-stone' | 'neutral' | 'high-contrast' | 'slate-blue' | 'moss' | 'dracula'
 export type UiFont = 'geist' | 'system'
@@ -71,6 +71,8 @@ export interface AppearanceSettings {
   readonly codeFont: CodeFont
   /** Reply prose in the transcript: the interface sans (default) or a system serif (productivity pass T6.6). */
   readonly readingFont: ReadingFont
+  /** A frosted panel behind the conversation column while a backdrop shows (default off). */
+  readonly readingPanel?: ReadingPanel
   /** Id of a saved theme in `customThemes` or of a built-in gallery theme; when it names one, it replaces the preset. Empty: the preset. */
   readonly customTheme?: string
   /** Saved theme definitions, as stored: each is parsed on use and an invalid one is skipped. */
@@ -187,7 +189,8 @@ function runtimeThemeCss(settings: Partial<AppearanceSettings> | undefined, scen
   if (!isDefaultInput(input) || pinned !== undefined) {
     const block = (selector: string, scheme: 'light' | 'dark') => [`${selector} {`, ...ThemeCss.blockDeclarations(input, scheme), '}'].join('\n')
     parts.push(block(RUNTIME_LIGHT_SELECTOR, 'light'), block(RUNTIME_DARK_SELECTOR, 'dark'))
-    if (pinned !== undefined) parts.push(ThemeDefinitionModel.css(pinned, { light: RUNTIME_LIGHT_SELECTOR, dark: RUNTIME_DARK_SELECTOR }, scenes))
+    if (pinned !== undefined)
+      parts.push(ThemeDefinitionModel.css(pinned, { light: RUNTIME_LIGHT_SELECTOR, dark: RUNTIME_DARK_SELECTOR }, scenes, settings?.readingPanel ?? 'off'))
   }
   const uiFont = settings?.interfaceFont ?? DEFAULT_APPEARANCE.interfaceFont
   const codeFont = settings?.codeFont ?? DEFAULT_APPEARANCE.codeFont

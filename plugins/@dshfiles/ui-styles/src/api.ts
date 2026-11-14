@@ -12,6 +12,7 @@ const presetId = Schema.Literals(['warm-stone', 'neutral', 'high-contrast', 'sla
 const uiFont = Schema.Literals(['geist', 'system'])
 const codeFont = Schema.Literals(['geist-mono', 'system'])
 const readingFont = Schema.Literals(['sans', 'serif'])
+const readingPanel = Schema.Literals(['off', 'soft', 'strong'])
 const finite = Schema.Number.check(Schema.isFinite())
 
 const presetSchema = Schema.Struct({ id: presetId, label: Schema.String, description: Schema.String })
@@ -46,6 +47,8 @@ const themeStateSchema = Schema.Struct({
   codeFont,
   /** Reply prose: the interface sans (default) or a system serif. */
   readingFont,
+  /** Frosted panel behind the conversation column while a backdrop shows. */
+  readingPanel,
   /** The Host's light/dark preference (Settings › Theme), read-only here; `unknown` when that row is absent. */
   scheme: Schema.String,
   /** True when every value is the default, so the static first-paint theme is the whole theme. */
@@ -84,6 +87,12 @@ const themeSetInputSchema = Schema.Struct({
   codeFont: Schema.optional(codeFont.annotate({ description: 'Code font.' })),
   readingFont: Schema.optional(
     readingFont.annotate({ description: 'Reply prose font in threads: sans (default) or serif (a system serif, nothing downloaded).' }),
+  ),
+  readingPanel: Schema.optional(
+    readingPanel.annotate({
+      description:
+        'A frosted glass panel behind the conversation column only (not the sides), so an animated backdrop is calm under the text: off (default), soft or strong. Applies to themes with a backdrop; kept across theme changes.',
+    }),
   ),
 })
 

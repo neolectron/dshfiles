@@ -45,6 +45,20 @@ describe('gallery themes', () => {
     expect(AppearanceModel.scenesNeeded({ ...settings, accentHue: 10 })).toEqual([])
   })
 
+  it('puts a frosted panel behind the conversation column only when asked, and only with a backdrop', () => {
+    const settings = { ...DEFAULT_APPEARANCE, customTheme: 'night-reef' }
+    const panel = '[data-conversation-content]::before {'
+    expect(AppearanceModel.runtimeThemeCss(settings)).not.toContain(panel)
+    const soft = AppearanceModel.runtimeThemeCss({ ...settings, readingPanel: 'soft' })
+    expect(soft).toContain(`${BACKDROP_HOST} ${panel}`)
+    expect(soft).toContain('width: min(100%, calc(var(--dsh-chat-content-width, 760px) + 96px));')
+    expect(soft).toContain('z-index: -1;')
+    expect(soft).toContain('backdrop-filter: blur(12px) saturate(1.1);')
+    expect(AppearanceModel.runtimeThemeCss({ ...settings, readingPanel: 'strong' })).toContain('backdrop-filter: blur(22px) saturate(1.1);')
+    // A theme without a backdrop has nothing to calm: no panel.
+    expect(AppearanceModel.runtimeThemeCss({ ...DEFAULT_APPEARANCE, preset: 'moss', readingPanel: 'strong' })).not.toContain(panel)
+  })
+
   it('lets a saved theme paint a scene, and refuses an unknown one', () => {
     const colours = GALLERY_THEMES[0]?.light?.colours
     const theme = { id: 'lagoon-mine', label: 'Mine', light: { colours, backdrop: { scene: 'honu-lagoon', layers: ['opacity: 0.5'] } } }

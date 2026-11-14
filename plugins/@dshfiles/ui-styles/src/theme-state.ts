@@ -29,6 +29,7 @@ interface StoredAppearance {
   readonly interfaceFont?: unknown
   readonly codeFont?: unknown
   readonly readingFont?: unknown
+  readonly readingPanel?: unknown
   readonly customTheme?: unknown
   readonly customThemes?: unknown
 }
@@ -54,6 +55,7 @@ function normaliseAppearance(stored: StoredAppearance | undefined): AppearanceSe
     interfaceFont: stored?.interfaceFont === 'system' ? 'system' : 'geist',
     codeFont: stored?.codeFont === 'system' ? 'system' : 'geist-mono',
     readingFont: stored?.readingFont === 'serif' ? 'serif' : 'sans',
+    readingPanel: stored?.readingPanel === 'soft' || stored?.readingPanel === 'strong' ? stored.readingPanel : 'off',
     customTheme: typeof stored?.customTheme === 'string' ? stored.customTheme : '',
     customThemes: Array.isArray(stored?.customThemes) ? stored.customThemes : [],
   }
@@ -62,7 +64,7 @@ function normaliseAppearance(stored: StoredAppearance | undefined): AppearanceSe
 /** The next stored settings for one `theme_set` call; `reset` restores the defaults and keeps the saved themes. */
 function nextAppearance(current: AppearanceSettings, input: ThemeSetInput): AppearanceSettings {
   const customThemes = current.customThemes ?? []
-  if (input.reset === true) return { ...DEFAULT_APPEARANCE, customTheme: '', customThemes }
+  if (input.reset === true) return { ...DEFAULT_APPEARANCE, readingPanel: 'off', customTheme: '', customThemes }
   // A new preset or saved theme starts from its own values: overrides only survive when the same call names them.
   const switching = input.preset !== undefined || input.customTheme !== undefined
   const base: Overrides = switching ? {} : pickOverrides(current)
@@ -83,6 +85,7 @@ function nextAppearance(current: AppearanceSettings, input: ThemeSetInput): Appe
     interfaceFont: input.interfaceFont ?? current.interfaceFont,
     codeFont: input.codeFont ?? current.codeFont,
     readingFont: input.readingFont ?? current.readingFont,
+    readingPanel: input.readingPanel ?? current.readingPanel ?? 'off',
     customTheme,
     customThemes,
   }
@@ -101,6 +104,7 @@ function defineTheme(current: AppearanceSettings, input: ThemeDefineInput): Appe
     interfaceFont: current.interfaceFont,
     codeFont: current.codeFont,
     readingFont: current.readingFont,
+    readingPanel: current.readingPanel ?? 'off',
     customTheme: definition.id,
     customThemes,
   }
@@ -153,6 +157,7 @@ function themeState(settings: AppearanceSettings, scheme: string): ThemeState {
     interfaceFont: settings.interfaceFont,
     codeFont: settings.codeFont,
     readingFont: settings.readingFont,
+    readingPanel: settings.readingPanel ?? 'off',
     scheme,
     isDefault:
       active === undefined &&

@@ -41,6 +41,15 @@ export const appearanceSettings = defineSettings({
     ])
       .default('sans')
       .description('Font for reply prose in threads. Serif uses a font already on your device; code and tables keep their fonts.'),
+    readingPanel: Schema.union([
+      Schema.const('off').description('Off (default): the backdrop runs under the text, softened only by its glass'),
+      Schema.const('soft').description('Soft: a light frosted panel behind the conversation column'),
+      Schema.const('strong').description('Strong: an almost opaque frosted panel behind the conversation column'),
+    ])
+      .default('off')
+      .description(
+        'A frosted glass panel behind the conversation column only, so an animated backdrop stays visible on the sides but calm under the text. Applies to themes with a backdrop.',
+      ),
     customTheme: Schema.string()
       .default('')
       .description(

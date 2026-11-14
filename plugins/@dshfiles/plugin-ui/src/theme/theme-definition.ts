@@ -342,7 +342,45 @@ function glassDeclarations(glass: SceneGlass): string[] {
   ]
 }
 
-function backdropCss(scope: string, backdrop: Backdrop, scenes: SceneSources): string {
+/** A frosted panel behind the conversation column only, so a backdrop never runs under the text: none, soft or strong. */
+export type ReadingPanel = 'off' | 'soft' | 'strong'
+export const READING_PANELS = ['off', 'soft', 'strong'] as const satisfies readonly ReadingPanel[]
+
+const PANEL_LEVELS = { soft: { opacity: 0.5, blur: 12 }, strong: { opacity: 0.8, blur: 22 } } as const
+
+/**
+ * The reading panel: the column's own width (the shared `--dsh-chat-content-width`, plus a margin), full height of the
+ * conversation, centred like the column. It sits in the non-scrolling conversation body, made a stacking context so the
+ * panel stays under every message and the composer and over the backdrop. Its sides fade so it reads as glass, not a card.
+ */
+function readingPanelCss(host: string, level: Exclude<ReadingPanel, 'off'>, tint: string): string {
+  const { opacity, blur } = PANEL_LEVELS[level]
+  const body = `${host} [data-conversation-content]`
+  const fade = 'linear-gradient(90deg, transparent 0, #000 32px, #000 calc(100% - 32px), transparent 100%)'
+  return [
+    `${body} {`,
+    '  isolation: isolate;',
+    '}',
+    `${body}::before {`,
+    "  content: '';",
+    '  position: absolute;',
+    '  top: 0;',
+    '  bottom: 0;',
+    '  left: 50%;',
+    '  width: min(100%, calc(var(--dsh-chat-content-width, 760px) + 96px));',
+    '  transform: translateX(-50%);',
+    '  z-index: -1;',
+    '  pointer-events: none;',
+    `  background-color: ${rgba(tint, opacity)};`,
+    `  backdrop-filter: blur(${blur}px) saturate(1.1);`,
+    `  -webkit-backdrop-filter: blur(${blur}px) saturate(1.1);`,
+    `  mask-image: ${fade};`,
+    `  -webkit-mask-image: ${fade};`,
+    '}',
+  ].join('\n')
+}
+
+function backdropCss(scope: string, backdrop: Backdrop, scenes: SceneSources, panel: ReadingPanel, tint: string): string {
   const host = `${scope} ${BACKDROP_HOST}`
   // Four pseudo-elements host the items, back to front: two on the dockview between two on the shell, all under content.
   const slots = [`${host}::before`, `${host} .dv-dockview::before`, `${host} .dv-dockview::after`, `${host}::after`]
@@ -382,6 +420,7 @@ function backdropCss(scope: string, backdrop: Backdrop, scenes: SceneSources): s
     )
   })
   if (backdrop.keyframes !== undefined) blocks.push(backdrop.keyframes)
+  if (panel !== 'off') blocks.push(readingPanelCss(host, panel, tint))
   const used = slots.slice(0, items.length).join(', ')
   const resting = sceneSource === undefined ? [] : [`  ${slots[0]} { background-image: ${SceneCatalog.image(SceneCatalog.resting(sceneSource))}; }`]
   blocks.push('@media (prefers-reduced-motion: reduce) {', `  ${used} { animation: none !important; }`, ...resting, '}')
@@ -392,14 +431,20 @@ function backdropCss(scope: string, backdrop: Backdrop, scenes: SceneSources): s
  * The CSS a definition adds after the generated blocks: per scheme, the pins under the runtime selector and the backdrop.
  * The light backdrop is guarded so it never shows in dark.
  */
-function definitionCss(definition: ThemeDefinition, selectors: { readonly light: string; readonly dark: string }, scenes: SceneSources = new Map()): string {
+function definitionCss(
+  definition: ThemeDefinition,
+  selectors: { readonly light: string; readonly dark: string },
+  scenes: SceneSources = new Map(),
+  panel: ReadingPanel = 'off',
+): string {
   const parts: string[] = []
   for (const scheme of ['light', 'dark'] as const satisfies readonly Scheme[]) {
     const theme = definition[scheme]
     if (theme === undefined) continue
     const selector = selectors[scheme]
     parts.push([`${selector} {`, ...pins(theme), '}'].join('\n'))
-    if (theme.backdrop !== undefined) parts.push(backdropCss(scheme === 'light' ? `${selector}:not([data-ds-dark-theme])` : selector, theme.backdrop, scenes))
+    if (theme.backdrop !== undefined)
+      parts.push(backdropCss(scheme === 'light' ? `${selector}:not([data-ds-dark-theme])` : selector, theme.backdrop, scenes, panel, theme.colours.bg))
   }
   return parts.join('\n\n')
 }

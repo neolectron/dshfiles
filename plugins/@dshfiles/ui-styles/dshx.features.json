@@ -120,7 +120,7 @@
     {
       "id": "saved-themes",
       "title": "Saved and gallery themes: any theme on request, Claude Code scenes, and Dracula",
-      "summary": "A theme is data: exact colours per scheme (eleven neutral steps, accent and status colours), optional syntax colours and an optional animated backdrop behind the conversation. The agent saves any theme the user asks for with theme_define and it applies live, no restart; theme_set customTheme switches between saved themes and presets; theme_remove deletes one. The built-in Dracula preset uses the same format: official Dracula Classic in dark with a night sky (twinkling stars, a violet moon), official Alucard Classic in light. Sixteen built-in gallery themes paint the twenty animated scenes of Claude Code’s theme-examples plugin (Apache-2.0, vendored, built on the Host and served to the client by the scene method), each under its glass in the scheme it is drawn for.",
+      "summary": "A theme is data: exact colours per scheme (eleven neutral steps, accent and status colours), optional syntax colours and an optional animated backdrop behind the conversation. The agent saves any theme the user asks for with theme_define and it applies live, no restart; theme_set customTheme switches between saved themes and presets; theme_remove deletes one. The built-in Dracula preset uses the same format: official Dracula Classic in dark with a night sky (twinkling stars, a violet moon), official Alucard Classic in light. Sixteen built-in gallery themes paint the twenty animated scenes of Claude Code’s theme-examples plugin (Apache-2.0, vendored, built on the Host and served to the client by the scene method), each under its glass in the scheme it is drawn for. An optional reading panel (off, soft, strong) frosts only the conversation column so the backdrop stays calm under the text.",
       "onboarding": {
         "firstAction": "Ask the agent for a theme, for example “make DSH look like Nord”, or pick the Dracula preset in Settings › Appearance.",
         "doneWhen": "The app takes the theme's exact colours at once, with its backdrop behind the conversation if it has one."
@@ -141,6 +141,12 @@
           "defaultValue": "[]",
           "constraints": "hidden; written by theme_define. Invalid entries are skipped; a backdrop has 1–3 layers of declarations without url(), @import or braces.",
           "coveredBy": ["ui-styles.theme-definition-parse", "ui-styles.saved-theme-lifecycle"]
+        },
+        {
+          "key": "readingPanel",
+          "defaultValue": "off",
+          "constraints": "off, soft or strong; applies only while a backdrop shows; kept across theme changes, off after reset.",
+          "coveredBy": ["ui-styles.reading-panel"]
         }
       ],
       "states": ["preset", "saved-theme", "saved-theme-overridden", "saved-theme-missing", "gallery-theme", "scene-loading"],
@@ -191,6 +197,12 @@
           "id": "ui-styles.gallery-aa",
           "file": "plugins/@dshfiles/plugin-ui/tests/gallery.test.ts",
           "testName": "are valid definitions whose text keeps WCAG AA"
+        },
+        {
+          "kind": "unit-test",
+          "id": "ui-styles.reading-panel",
+          "file": "plugins/@dshfiles/plugin-ui/tests/gallery.test.ts",
+          "testName": "puts a frosted panel behind the conversation column only when asked, and only with a backdrop"
         }
       ],
       "telemetry": [
