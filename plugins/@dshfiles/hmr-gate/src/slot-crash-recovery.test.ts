@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { type RecoveryListener, SlotCrashRecovery } from './slot-crash-recovery.js'
 
-const slotCrash = (): Error => Object.assign(new Error("scope 'session-maybe' rendered without an installed adapter"), { name: 'SlotAssemblyError' })
+// As @deepseek-ai/dsh-client-ui-renderer declares it: a nameless subclass, so `name` stays "Error".
+const SlotAssemblyError = class extends Error {}
+const slotCrash = (): Error => new SlotAssemblyError("scope 'session-maybe' rendered without an installed adapter")
 
 /** One browser tab: session storage survives its reloads, listeners and timers do not. */
 const tab = () => {

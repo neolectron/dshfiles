@@ -43,7 +43,7 @@ export class SlotCrashRecovery {
     registry.dshfilesSlotCrashRecoveryInstalled = true
     let pending = false
     page.addEventListener('error', event => {
-      if (pending || !(event.error instanceof Error) || event.error.name !== 'SlotAssemblyError') return
+      if (pending || !SlotCrashRecovery.isSlotCrash(event.error)) return
       const now = page.now()
       const recent = SlotCrashRecovery.attempts(page).filter(at => now - at < SlotCrashRecovery.windowMs)
       const delay = SlotCrashRecovery.delaysMs[recent.length]
@@ -56,6 +56,15 @@ export class SlotCrashRecovery {
         page.reload()
       }, delay)
     })
+  }
+
+  /**
+   * The renderer's `SlotAssemblyError` is `class extends Error {}`: its `name` stays `"Error"` and only the class name
+   * says what it is (DevTools prints that name, which hid the mismatch). Match either, so a renderer that later sets
+   * `name` still counts.
+   */
+  static isSlotCrash(error: unknown): boolean {
+    return error instanceof Error && (error.name === 'SlotAssemblyError' || error.constructor.name === 'SlotAssemblyError')
   }
 
   private static attempts(page: RecoveryPage): readonly number[] {
