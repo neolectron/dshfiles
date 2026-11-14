@@ -60,7 +60,7 @@ export function ExpandButton({
   const shown = workbench ? dockOpen : expanded
   if (shown && !isMobileDevice()) return null
   return (
-    <Tooltip label={t('chrome.expand')} shortcutKeys={shortcut?.keys} side="bottom" delayMs={500} disabled={shown}>
+    <Tooltip label={t('chrome.expand')} shortcutKeys={shortcut?.keys} side="bottom" delayMs={500} disabled={shown} portal>
       <Button
         size="sm"
         className={shown ? `${css.button} ${css.expanded}` : css.button}

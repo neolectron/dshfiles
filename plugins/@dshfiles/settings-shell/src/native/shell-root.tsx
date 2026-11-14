@@ -105,7 +105,7 @@ export const ShellRoot = (props: {
       >
         {renderSlot('settings.launcher', launcherProps, {
           fallback: (
-            <Tooltip disabled={open} label={t('trigger')} shortcutKeys={shortcut?.keys}>
+            <Tooltip disabled={open} label={t('trigger')} shortcutKeys={shortcut?.keys} portal>
               <button
                 aria-expanded={open}
                 aria-haspopup="dialog"

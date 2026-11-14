@@ -61,7 +61,8 @@ profile, install globally, restart DSH, or update the running Host.
   [Locales](src/native/locales.ts) carry the
   recorded copy delta. The [header label](src/native/AgentPresetLabel.tsx) puts the preset name in its own span
   ([styles](src/native/AgentPresetLabel.module.css)), so a label the header squeezes ends in an ellipsis instead of
-  being cut mid-letter (b:ark0). Other native components and styles are unchanged.
+  being cut mid-letter (b:ark0). The [section](src/native/AgentPresetSection.tsx) description tooltip passes
+  `portal`, so a Workbench pane (`contain: layout paint`) does not offset it (b:d5wg). Other native components and styles are unchanged.
 
 On an upstream bump, run `node scripts/native-fork-diff.mjs agent-preset --to <new-tag>`, copy unchanged
 files, reapply the recorded deltas, update provenance, and rerun the focused tests plus the scratch journey.

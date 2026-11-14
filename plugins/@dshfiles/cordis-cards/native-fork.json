@@ -25,5 +25,5 @@
       "local": "locale"
     }
   ],
-  "delta": ["src/native/index.ts"]
+  "delta": ["src/native/CordisPanel.tsx", "src/native/index.ts"]
 }

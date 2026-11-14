@@ -172,7 +172,7 @@ export const DesktopUpdateIndicator = (props: {
   const busy = opening || (state !== undefined && state.configurationError === undefined && BUSY_PHASES.has(state.phase))
   const disabled = opening || (busy && state?.phase !== 'downloading')
   return (
-    <Tooltip label={failed ? retryLabel : copy.detail} side="top">
+    <Tooltip label={failed ? retryLabel : copy.detail} side="top" portal>
       <button
         aria-disabled={disabled}
         aria-label={label}
@@ -211,7 +211,7 @@ export const DesktopUpdateBadge = (props: {
   const copy: UpdateCopy = state === undefined ? { label: retryLabel, detail: retryLabel } : updateCopy(state, props.t)
   const label = failed ? retryLabel : copy.label
   return (
-    <Tooltip label={failed ? label : copy.detail} side="right">
+    <Tooltip label={failed ? label : copy.detail} side="right" portal>
       <span
         aria-label={label}
         className="dshx:absolute dshx:end-0.5 dshx:top-0.5 dshx:size-1.5 dshx:rounded-full dshx:bg-[var(--dsw-alias-brand-primary-new-colorprimary-new-color)]"

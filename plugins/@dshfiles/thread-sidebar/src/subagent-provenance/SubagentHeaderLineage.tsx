@@ -393,14 +393,14 @@ function CatalogRows({
                   <span className={css.metrics}>
                     {tokenMetric !== undefined && <span className={css.metricToken}>{tokenMetric}</span>}
                     {durationMetric !== undefined && (
-                      <NativeTooltip label={t('duration.exactTitle', { duration: durationMetric.exact })} side="bottom">
+                      <NativeTooltip label={t('duration.exactTitle', { duration: durationMetric.exact })} side="bottom" portal>
                         <span className={css.metricDuration}>{durationMetric.compact}</span>
                       </NativeTooltip>
                     )}
                   </span>
                 )}
                 {!isCurrent && !external && (
-                  <NativeTooltip label={t('open.sidebar')} side="bottom" align="end">
+                  <NativeTooltip label={t('open.sidebar')} side="bottom" align="end" portal>
                     <button
                       type="button"
                       className={css.sidebarButton}

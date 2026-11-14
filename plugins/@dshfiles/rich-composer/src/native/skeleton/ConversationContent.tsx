@@ -202,7 +202,7 @@ export function ConversationContent(props: ConversationContentProps) {
           <span className={css.placeLabel} data-place-label="host" aria-hidden>{t('runRow.placeHost')}</span>
           <span className={css.placeLabel} data-place-label="workspace" aria-hidden>{t('runRow.placeWorkspace')}</span>
       <span className={css.runProject} data-run-segment="project" data-thread-workspace={threadWorkspaceName}>
-        <Tooltip label={t('runRow.project')} side="top" delayMs={400} disabled={pickerOpen}>
+        <Tooltip label={t('runRow.project')} side="top" delayMs={400} disabled={pickerOpen} portal>
           <WorkspaceChip
             buttonRef={pickerAnchor}
             label={chipTitle}
@@ -242,7 +242,7 @@ export function ConversationContent(props: ConversationContentProps) {
   // machine is the default, so only a remote host is named ("Local" stays in the tooltip).
   const summaryHost = remoteWorkspaceCwd === undefined ? t('runRow.summaryLocal') : t('runRow.summaryRemote')
   const runSummary = useMemo(() => chipTitle === undefined ? undefined : (
-    <Tooltip label={t('runRow.summary', { project: chipTitle, host: summaryHost })} side="top" delayMs={400}>
+    <Tooltip label={t('runRow.summary', { project: chipTitle, host: summaryHost })} side="top" delayMs={400} portal>
       <span className={css.runSummary} tabIndex={0} data-run-summary="" data-thread-workspace={threadWorkspaceName}>
         <IconFolderOpenRegular size={13} aria-hidden />
         <span className={css.runSummaryText}>{chipTitle}</span>

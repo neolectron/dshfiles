@@ -75,7 +75,7 @@ const ReleaseVersion = (props: {
         </a>
       )}
       {date !== null && (
-        <Tooltip label={date.absolute} openOnClick side="bottom">
+        <Tooltip label={date.absolute} openOnClick side="bottom" portal>
           <time className="dshx:inline-flex dshx:items-center dshx:pointer-coarse:min-h-11" dateTime={date.dateTime} tabIndex={0}>
             · {date.relative}
           </time>
@@ -123,7 +123,7 @@ export const DshReleaseIndicator = (props: { readonly t: ShellTranslate }): JSX.
   if (version === null) return null
   const label = props.t('releaseNotice.badge', { version })
   return (
-    <Tooltip label={label} side="right">
+    <Tooltip label={label} side="right" portal>
       <StatusDot aria-label={label} size="sm" tone="warning" className="dshx:absolute dshx:end-0 dshx:top-0" />
     </Tooltip>
   )

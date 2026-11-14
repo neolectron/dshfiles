@@ -30,6 +30,7 @@
     "src/native/QuestionComposer.tsx",
     "src/native/QuestionComposer.module.css",
     "src/native/PlanReviewPanel.tsx",
+    "src/native/QuestionReplyView.tsx",
     "src/native/contract/slots.ts"
   ]
 }

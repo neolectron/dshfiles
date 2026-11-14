@@ -4,6 +4,9 @@
 // dshfiles (productivity pass T1.5): a reply's row is copy plus one `⋯` menu holding the rest (feedback, Trace, branch,
 // usage); times leave the row for the transcript's time dividers (TimeDivider.tsx), so `time` only feeds an accessible
 // label and the `clock` side keeps the row's layout.
+//
+// dshfiles (b:d5wg): every tooltip passes `portal`. A Workbench pane (`contain: layout paint`) is the containing block
+// of an inline `position: fixed` tooltip, which then lands offset by the pane's viewport origin.
 
 import { Popover, PopoverContent, PopoverTrigger } from '@dshfiles/plugin-ui/components/ui/popover'
 import { CheckIcon, CopyIcon, EllipsisIcon, GitBranchIcon } from '@dshfiles/plugin-ui/icons'
@@ -54,7 +57,7 @@ export function MessageIconActions({
   // dshfiles (b:ysaj): inside the ⋯ menu the branch verb is a labelled row like the plugins' rows (Trace, Add to
   // backlog, Restore), not a bare icon in a line of mixed icons and words.
   const branch = onBranch !== undefined && (
-        <Tooltip label={branchUnavailable ? t('message.branchUnavailable') : t('message.branch')} side="bottom" openOnClick={branchUnavailable}>
+        <Tooltip label={branchUnavailable ? t('message.branchUnavailable') : t('message.branch')} side="bottom" openOnClick={branchUnavailable} portal>
           {/* Native disabled buttons do not deliver the hover/focus events Tooltip needs. */}
           <button
             type="button"
@@ -72,7 +75,7 @@ export function MessageIconActions({
   )
   return (
     <div className={className === undefined ? css.actions : `${css.actions} ${className}`} data-clock={clock}>
-      <Tooltip label={copied ? t('copied') : t('copy')} side="bottom">
+      <Tooltip label={copied ? t('copied') : t('copy')} side="bottom" portal>
         <button type="button" className={css.action} aria-label={copied ? t('copied') : t('copy')} onClick={onCopy}>
           {copied ? <CheckIcon size={14} strokeWidth={1.5} /> : <CopyIcon size={14} strokeWidth={1.5} />}
         </button>
@@ -80,7 +83,7 @@ export function MessageIconActions({
       {more
         ? (
           <Popover>
-            <Tooltip label={t('message.more')} side="bottom">
+            <Tooltip label={t('message.more')} side="bottom" portal>
               <PopoverTrigger asChild>
                 <button type="button" className={css.action} aria-label={t('message.more')}>
                   <EllipsisIcon size={14} strokeWidth={1.5} />

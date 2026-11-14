@@ -351,7 +351,7 @@ function PanelChrome({
   const toggle = shortcuts.find(entry => entry.id === 'sidebar.right.toggle')
   return (
     <>
-      <Tooltip label={modeLabel} shortcutKeys={mode?.keys} side="bottom" delayMs={500}>
+      <Tooltip label={modeLabel} shortcutKeys={mode?.keys} side="bottom" delayMs={500} portal>
         <button
           type="button"
           className={css.iconButton}
@@ -363,7 +363,7 @@ function PanelChrome({
           {fullscreen ? <ExitFullscreenGlyph /> : <FullscreenGlyph />}
         </button>
       </Tooltip>
-      <Tooltip label={t('chrome.collapse')} shortcutKeys={toggle?.keys} side="bottom" delayMs={500}>
+      <Tooltip label={t('chrome.collapse')} shortcutKeys={toggle?.keys} side="bottom" delayMs={500} portal>
         <button
           type="button"
           className={css.iconButton}

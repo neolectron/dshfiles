@@ -129,19 +129,19 @@ export function ReviewTab({
             onSelect={(id) => { actions.selected(tab.id, Number(id)); setMenuOpen(false) }} />}
         {file !== undefined && <span className={css.counts}><Counts file={file} t={t} /></span>}
         <span className={css.tools}>
-          <Tooltip label={t(split ? 'review.unified' : 'review.split')} side="bottom" delayMs={500}>
+          <Tooltip label={t(split ? 'review.unified' : 'review.split')} side="bottom" delayMs={500} portal>
             <button type="button" className={css.tool} aria-pressed={split} aria-label={t('review.splitAria')} data-review-tool="split"
               onClick={() => { actions.toggledSplit(tab.id) }}>
               <IconCompareSplitOutlineRegular className={css.compareIcon} />
             </button>
           </Tooltip>
-          <Tooltip label={t(wrap ? 'review.nowrap' : 'review.wrap')} side="bottom" delayMs={500}>
+          <Tooltip label={t(wrap ? 'review.nowrap' : 'review.wrap')} side="bottom" delayMs={500} portal>
             <button type="button" className={css.tool} aria-pressed={wrap} aria-label={t('review.wrapAria')} data-review-tool="wrap"
               onClick={() => { actions.toggledWrap(tab.id) }}>
               {wrap ? <IconNowrapFillRegular /> : <IconWrapFillRegular />}
             </button>
           </Tooltip>
-          {file !== undefined && <Tooltip label={t('review.openFile')} side="bottom" delayMs={500}>
+          {file !== undefined && <Tooltip label={t('review.openFile')} side="bottom" delayMs={500} portal>
             <button type="button" className={css.tool} aria-label={t('review.openFileAria', { name: file.display })} data-review-tool="open-file"
               onClick={() => { tab.actions.openResource(fileAddressFor(sessionId, cwd, file.path)) }}><IconInspectOutlineRegular /></button>
           </Tooltip>}
