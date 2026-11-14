@@ -292,72 +292,76 @@ function TurnNavigatorRail(
           setPreviewTurn(null)
         }}
       >
-        {(onFilterChange !== undefined || onStep !== undefined) && (
+        {/* dshfiles (b:d5wg): the filter stands apart from the track (previous, the marks, next), which a theme's
+            backdrop draws as one centred pill. */}
+        {onFilterChange !== undefined && (
           <div className={css.controls}>
-            {onFilterChange !== undefined && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <button
-                    type="button"
-                    className={css.control}
-                    data-turn-map-filter=""
-                    data-active={filter === 'all' ? undefined : ''}
-                    aria-label={t('chat.turnMap.filter', { filter: t(FILTER_LABEL[filter]) })}
-                  >
-                    <ListFilterIcon size={12} strokeWidth={1.75} aria-hidden="true" />
-                  </button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent side="left" align="start" className="dshx-root dshx:min-w-40">
-                  <DropdownMenuLabel>{t('chat.turnNavigation.label')}</DropdownMenuLabel>
-                  <DropdownMenuRadioGroup value={filter} onValueChange={value => onFilterChange(value as TurnMarkFilter)}>
-                    {TURN_MARK_FILTERS.map(option => (
-                      <DropdownMenuRadioItem key={option} value={option} disabled={option !== 'all' && (filterCounts?.[option] ?? 0) === 0}>
-                        <span className="dshx:flex-1">{t(FILTER_LABEL[option])}</span>
-                        {filterCounts !== undefined && <span className="dshx:text-muted-foreground dshx:tabular-nums">{filterCounts[option]}</span>}
-                      </DropdownMenuRadioItem>
-                    ))}
-                  </DropdownMenuRadioGroup>
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-            {onStep !== undefined && (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className={css.control}
+                  data-turn-map-filter=""
+                  data-active={filter === 'all' ? undefined : ''}
+                  aria-label={t('chat.turnMap.filter', { filter: t(FILTER_LABEL[filter]) })}
+                >
+                  <ListFilterIcon size={12} strokeWidth={1.75} aria-hidden="true" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent side="left" align="start" className="dshx-root dshx:min-w-40">
+                <DropdownMenuLabel>{t('chat.turnNavigation.label')}</DropdownMenuLabel>
+                <DropdownMenuRadioGroup value={filter} onValueChange={value => onFilterChange(value as TurnMarkFilter)}>
+                  {TURN_MARK_FILTERS.map(option => (
+                    <DropdownMenuRadioItem key={option} value={option} disabled={option !== 'all' && (filterCounts?.[option] ?? 0) === 0}>
+                      <span className="dshx:flex-1">{t(FILTER_LABEL[option])}</span>
+                      {filterCounts !== undefined && <span className="dshx:text-muted-foreground dshx:tabular-nums">{filterCounts[option]}</span>}
+                    </DropdownMenuRadioItem>
+                  ))}
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+        )}
+        <div className={css.track}>
+          {onStep !== undefined && (
+            <div className={`${css.controls} ${css.stepControls}`}>
               <button type="button" className={css.control} aria-label={t('chat.turnMap.previous')} onClick={() => onStep('previous')}>
                 <ChevronUpIcon size={12} strokeWidth={1.75} aria-hidden="true" />
               </button>
-            )}
+            </div>
+          )}
+          <div ref={scrollerRef} className={fadeClasses.join(' ')}>
+            <div ref={virtualizer.containerRef} className={css.marks}>
+              {band !== null && <div className={css.band} aria-hidden="true" style={{ top: band.top, height: band.height }} />}
+              {virtualItems.map(({ index, key }) => {
+                const item = items[index]
+                if (item === undefined) return null
+                return (
+                  <TurnMark
+                    key={key}
+                    item={item}
+                    index={index}
+                    active={item.turn === activeTurn}
+                    busy={item.turn === busyTurn}
+                    previewId={item.turn === previewTurn ? previewId : undefined}
+                    registerElement={virtualizer.measureElement}
+                    onNavigate={onNavigate}
+                    onPreview={setPreviewTurn}
+                    onFocusChange={onFocusChange}
+                    t={t}
+                  />
+                )
+              })}
+            </div>
           </div>
-        )}
-        <div ref={scrollerRef} className={fadeClasses.join(' ')}>
-          <div ref={virtualizer.containerRef} className={css.marks}>
-            {band !== null && <div className={css.band} aria-hidden="true" style={{ top: band.top, height: band.height }} />}
-            {virtualItems.map(({ index, key }) => {
-              const item = items[index]
-              if (item === undefined) return null
-              return (
-                <TurnMark
-                  key={key}
-                  item={item}
-                  index={index}
-                  active={item.turn === activeTurn}
-                  busy={item.turn === busyTurn}
-                  previewId={item.turn === previewTurn ? previewId : undefined}
-                  registerElement={virtualizer.measureElement}
-                  onNavigate={onNavigate}
-                  onPreview={setPreviewTurn}
-                  onFocusChange={onFocusChange}
-                  t={t}
-                />
-              )
-            })}
-          </div>
+          {onStep !== undefined && (
+            <div className={`${css.controls} ${css.stepControls}`}>
+              <button type="button" className={css.control} aria-label={t('chat.turnMap.next')} onClick={() => onStep('next')}>
+                <ChevronDownIcon size={12} strokeWidth={1.75} aria-hidden="true" />
+              </button>
+            </div>
+          )}
         </div>
-        {onStep !== undefined && (
-          <div className={css.controls}>
-            <button type="button" className={css.control} aria-label={t('chat.turnMap.next')} onClick={() => onStep('next')}>
-              <ChevronDownIcon size={12} strokeWidth={1.75} aria-hidden="true" />
-            </button>
-          </div>
-        )}
         {preview !== undefined && previewPosition !== undefined && (
           <div
             id={previewId}

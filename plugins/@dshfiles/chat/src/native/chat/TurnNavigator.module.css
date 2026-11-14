@@ -46,10 +46,22 @@
   cursor: pointer;
   pointer-events: auto;
   transform: translateY(-50%);
-  /* dshfiles (b:d5wg): the rail sits on the scene outside the reading veil; over a theme's backdrop it lays the theme's
-     chrome surface under its ticks and controls (ui-styles `--dshx-backdrop-chrome`). Transparent elsewhere. */
-  border-radius: var(--dsw-radius-md);
+  /* dshfiles (b:d5wg): the filter and the track stack with a small gap over a theme's backdrop. */
+  gap: var(--dshx-backdrop-rail-gap, 0px);
+}
+
+/* dshfiles (b:d5wg): previous, the marks and next. Over a theme's backdrop it is one slim pill of the theme's chrome
+   surface with a soft hairline, its contents centred (ui-styles `--dshx-backdrop-chrome`, `--dshx-backdrop-rail-*`);
+   elsewhere it adds nothing. */
+.track {
+  display: flex;
+  flex: 0 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  padding-block: var(--dshx-backdrop-rail-pad, 0px);
+  border-radius: 999px;
   background: var(--dshx-backdrop-chrome, transparent);
+  box-shadow: var(--dshx-backdrop-rail-ring, none);
 }
 
 /* The frame's inner scroller: no visible scrollbar, no scroll chaining into
@@ -105,14 +117,15 @@
 .mark::before {
   position: absolute;
   top: 50%;
-  right: 0;
+  /* dshfiles (b:d5wg): centred on the backdrop pill; flush right elsewhere. */
+  right: var(--dshx-backdrop-rail-inset, 0px);
   width: 20px;
   height: 2px;
   border-radius: 2px;
   background: var(--dsw-alias-border-l4);
   content: '';
   transform: translateY(-50%) scaleX(0.6);
-  transform-origin: right center;
+  transform-origin: var(--dshx-backdrop-rail-origin, right) center;
   transition: transform 140ms ease, background-color 140ms ease;
 }
 
@@ -169,9 +182,9 @@
 /* The Turns on screen: one quiet band behind their marks. */
 .band {
   position: absolute;
-  right: 0;
+  right: calc(var(--dshx-backdrop-rail-inset, 0px) / 2);
   width: 24px;
-  border-radius: var(--dsw-radius-sm);
+  border-radius: var(--dshx-backdrop-rail-band-radius, var(--dsw-radius-sm));
   background: var(--dsw-alias-interactive-bg-hover-solid, var(--dsw-alias-interactive-bg-hover));
   pointer-events: none;
   transition: top 120ms ease, height 120ms ease;
@@ -181,7 +194,8 @@
 .controls {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+  /* dshfiles (b:d5wg): centred in the backdrop pill. */
+  align-items: var(--dshx-backdrop-rail-align, flex-end);
   gap: 2px;
   padding-block: 2px;
   opacity: 0;
@@ -192,6 +206,24 @@
 .frame:focus-within .controls,
 .frame[data-filtered] .controls {
   opacity: 1;
+}
+
+/* dshfiles (b:d5wg): over a theme's backdrop previous and next stay shown, part of the pill. */
+.stepControls {
+  opacity: var(--dshx-backdrop-rail-steps, 0);
+}
+
+/* dshfiles (b:d5wg): over a theme's backdrop the filter, standing apart, gets its own round chip of the same surface. */
+.controls:not(.stepControls) .control {
+  border-radius: var(--dshx-backdrop-rail-chip-radius, var(--dsw-radius-sm));
+  background: var(--dshx-backdrop-chrome, transparent);
+  box-shadow: var(--dshx-backdrop-rail-ring, none);
+}
+
+.controls:not(.stepControls) .control:hover,
+.controls:not(.stepControls) .control[data-state='open'],
+.controls:not(.stepControls) .control[data-active] {
+  background: linear-gradient(var(--dsw-alias-interactive-bg-hover), var(--dsw-alias-interactive-bg-hover)) var(--dshx-backdrop-chrome, transparent);
 }
 
 .control {

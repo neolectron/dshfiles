@@ -8,7 +8,7 @@ import { DRACULA_THEME } from '../src/theme/dracula.ts'
 import { GALLERY_THEMES } from '../src/theme/gallery.ts'
 import { ReadabilityModel, type Rgb } from '../src/theme/readability.ts'
 import { SCENES } from '../src/theme/scene-catalog.ts'
-import { BUBBLE_RING, GPU_ATTRIBUTE, ThemeDefinitionModel, type ReadingVeil, type SchemeTheme, type ThemeDefinition } from '../src/theme/theme-definition.ts'
+import { BUBBLE_RING, GPU_ATTRIBUTE, RAIL_RING, ThemeDefinitionModel, type ReadingVeil, type SchemeTheme, type ThemeDefinition } from '../src/theme/theme-definition.ts'
 import { SAMPLED_SCENES } from './scene-fixture.ts'
 
 const hex = ReadabilityModel.hexToRgb
@@ -129,6 +129,10 @@ describe('the backdrop stack', () => {
     expect(text).toContain('[data-workbench-panel-id]:not(:has([data-conversation-content])) {\n  background-color: var(--dshx-tone-0);')
     expect(text).toMatch(/--dshx-backdrop-chrome: rgb\(\d+ \d+ \d+ \/ [\d.]+\);/u)
     expect(text).toContain(`--dshx-backdrop-bubble-ring: ${BUBBLE_RING};`)
+    // The turn rail's pill: centred ticks, a soft ring. A plain theme sets none of it, so its rail stays as it was.
+    expect(text).toContain(`--dshx-backdrop-rail-ring: ${RAIL_RING};`)
+    expect(text).toContain('--dshx-backdrop-rail-origin: center;')
+    expect(ThemeDefinitionModel.css({ id: 'plain', label: 'Plain', dark: { colours: theme.light!.colours } }, { light: 'body', dark: 'body' })).not.toContain('--dshx-backdrop-')
     // With no blur the seat continues the scene with its resting picture.
     const seat = rules(text).find(rule => rule.includes('[data-composer-seat]::before {'))
     expect(seat).toMatch(/background-attachment: (scroll, )?fixed;/u)

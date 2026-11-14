@@ -494,6 +494,8 @@ const VEIL_FADE = 'linear-gradient(90deg, transparent 0, #000 32px, #000 calc(10
 const SEAT_BAND = `linear-gradient(90deg, transparent calc(50% - ${VEIL_BAND} / 2), #000 calc(50% - ${VEIL_BAND} / 2 + 32px), #000 calc(50% + ${VEIL_BAND} / 2 - 32px), transparent calc(50% + ${VEIL_BAND} / 2))`
 /** The user bubble's outline over a backdrop: a hairline in the strong border step, inside its box. */
 export const BUBBLE_RING = 'inset 0 0 0 1px var(--dshx-tone-6)'
+/** The turn rail pill's outline over a backdrop: a hairline in the theme's line step, half strength. */
+export const RAIL_RING = 'inset 0 0 0 1px color-mix(in srgb, var(--dshx-tone-4) 50%, transparent)'
 /** The composer seat fades the transcript out over its top 36px (ConversationRoot's input mask). */
 const SEAT_FADE = 'linear-gradient(180deg, transparent 0, #000 36px)'
 
@@ -616,6 +618,17 @@ function backdropCss(scope: string, theme: SchemeTheme, backdrop: Backdrop, scen
     `  --dshx-backdrop-chrome: ${rgba(theme.colours.bg, material.chrome)};`,
     // The raised bubble fill can match the veiled scene behind it: a strong hairline keeps the user's message apart.
     `  --dshx-backdrop-bubble-ring: ${BUBBLE_RING};`,
+    // The turn rail: previous, its ticks and next on a slim, centred pill of that surface with a soft hairline, the
+    // arrows always shown; the filter on its own round chip above it.
+    '  --dshx-backdrop-rail-pad: 2px;',
+    '  --dshx-backdrop-rail-gap: 4px;',
+    '  --dshx-backdrop-rail-inset: 4px;',
+    '  --dshx-backdrop-rail-align: center;',
+    '  --dshx-backdrop-rail-origin: center;',
+    '  --dshx-backdrop-rail-steps: 1;',
+    '  --dshx-backdrop-rail-band-radius: 999px;',
+    '  --dshx-backdrop-rail-chip-radius: 999px;',
+    `  --dshx-backdrop-rail-ring: ${RAIL_RING};`,
     '}',
     // Docked panes are drawn in Dockview's render overlays, which hold a transform and paint containment for
     // compositing. Either makes the overlay the frame of every fixed background inside it, so each pane fitted its own
