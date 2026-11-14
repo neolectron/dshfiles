@@ -149,7 +149,9 @@ Then('the runtime theme paints the scene of {string}', async ({ page }: { page: 
   await recordAssertion(page, 'ui-styles-gallery-scene-painted', async () => {
     // The scene's SVG comes from the Host's scene method, then lands in the runtime sheet as a data URL.
     await expect.poll(() => page.evaluate(() => document.getElementById('dshfiles-ui-styles-theme')?.textContent ?? '')).toContain('data:image/svg+xml')
-    expect(await page.evaluate(() => document.getElementById('dshfiles-ui-styles-theme')?.textContent ?? '')).toContain('backdrop-filter: blur(')
+    // The client sampled the scene: the theme's readability veil is decided, and nothing filters the scene per frame.
+    const sheet = await page.evaluate(() => document.getElementById('dshfiles-ui-styles-theme')?.textContent ?? '')
+    expect(sheet).not.toContain('backdrop-filter')
     expect(id).not.toBe('')
   })
 })

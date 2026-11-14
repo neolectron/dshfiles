@@ -8,7 +8,7 @@
 
 ![The Night Reef gallery theme in dark](docs/screenshots/gallery-night-reef.png)
 
-![The strong reading panel behind the conversation column](docs/screenshots/reading-panel.png)
+![The reading veil behind the conversation column](docs/screenshots/reading-panel.png)
 
 The one bundle that compiles and injects the shared `@dshfiles/plugin-ui` stylesheet (the ordered union of every owned
 plugin's classes), and the owner of the theme.
@@ -43,17 +43,19 @@ plugin's classes), and the owner of the theme.
   are paired into one light-and-dark theme). The scene code is vendored unchanged under `src/vendor/theme-examples`
   (Apache-2.0, provenance and update policy in its `NOTICE.md`) and runs on the Host only: the client asks the `scene`
   method of the theme API for the SVG it needs and paints it as a data URL, so the browser bundle never carries the
-  builders and nothing is fetched from the network. A scene sits under its own glass (blur, tint, opacity), strongest
-  under the conversation column. Each scene only shows in the scheme it is drawn for; the colours are the generated
+  builders and nothing is fetched from the network. A scene sits under its own glass tint, strongest under the
+  conversation column. Each scene only shows in the scheme it is drawn for; the colours are the generated
   palette retuned to the scene (WCAG AA). An SVG painted as an image cannot see `prefers-reduced-motion`, so the page
   swaps in the scene's own resting picture under that query. `theme_set { customTheme: "night-reef" }` picks one;
   `theme_get` lists them in `galleryThemes`. A saved theme can paint a scene too (`backdrop.scene`).
-- **Reading panel.** `readingPanel` (Settings › Appearance, or `theme_set { readingPanel }`): `off` (default), `soft`
-  or `strong` puts a frosted panel behind the conversation column only, the column's own width
-  (`--dsh-chat-content-width` plus a margin) and the conversation's full height, so a backdrop stays visible on the
-  sides and calm under the text and in-chat cards. It sits in the non-scrolling conversation body, made a stacking
-  context, under every message and the composer; its sides fade. It applies only while a backdrop shows and survives
-  theme changes; `reset: true` turns it off.
+- **Reading veil and readability.** Under the conversation column, a theme with a backdrop lays a veil of its own
+  background colour. Its opacity is the smallest that keeps the theme's text readable over that scene
+  (`plugin-ui/src/theme/readability.ts`: text 4.5:1, secondary 3:1 over 95% of a coarse sample of the scene's resting
+  picture, taken once by the client), so white text never lands on a white part of a scene; 0 when the scene is calm
+  enough. Two settings add to it: `readingBlur` (0–24 px) and `readingTint` (0–100 %), in Settings › Appearance or
+  `theme_set { readingBlur, readingTint }`. The blur is a pre-blurred still of the scene, rasterised once and fixed to
+  the viewport like the scene, so nothing is filtered per frame: no `backdrop-filter` anywhere in a backdrop. The
+  scene's glass is a gradient tint for the same reason. Both are kept across theme changes; `reset: true` sets them to 0.
 - **Dracula.** A built-in saved theme from the [official spec](https://draculatheme.com/spec): Dracula Classic in dark,
   with a night sky (a fixed star field, two star layers twinkling out of phase, a violet moon top right; only `opacity`
   animates, so nothing repaints per frame), and Alucard Classic, Dracula's official light companion, in light. Every

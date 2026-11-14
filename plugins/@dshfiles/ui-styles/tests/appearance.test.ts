@@ -12,7 +12,7 @@ import { InvalidThemeDefinition, ThemeStateModel } from '../src/theme-state.ts'
 const patch = readFileSync(join(process.cwd(), 'cordis.patch.yml'), 'utf8')
 const fonts = readFileSync(join(process.cwd(), 'src/fonts.css'), 'utf8')
 /** The defaults as normalised from storage: no saved theme in use, none saved. */
-const STORED_DEFAULT = { ...DEFAULT_APPEARANCE, readingPanel: 'off', customTheme: '', customThemes: [] }
+const STORED_DEFAULT = { ...DEFAULT_APPEARANCE, readingBlur: 0, readingTint: 0, customTheme: '', customThemes: [] }
 
 describe('Appearance settings', () => {
   it('lives in the namespace of the Loader row', () => {
@@ -161,14 +161,17 @@ describe('saved themes', () => {
     expect(() => ThemeStateModel.removeTheme(lagoon, 'honu-lagoon')).toThrow(/built-in gallery theme/u)
   })
 
-  it('keeps the reading panel across theme changes and turns it off on reset', () => {
-    const panel = ThemeStateModel.nextAppearance(start, { readingPanel: 'soft' })
-    const lagoon = ThemeStateModel.nextAppearance(panel, { customTheme: 'honu-lagoon' })
-    expect(ThemeStateModel.themeState(lagoon, 'light')).toMatchObject({ readingPanel: 'soft', customTheme: 'honu-lagoon' })
-    expect(ThemeStateModel.defineTheme(panel, { theme: NORD }).readingPanel).toBe('soft')
-    expect(ThemeStateModel.nextAppearance(lagoon, { reset: true }).readingPanel).toBe('off')
-    expect(appearanceSettings.schema({ readingPanel: 'strong' }).readingPanel).toBe('strong')
-    expect(() => appearanceSettings.schema({ readingPanel: 'max' as never })).toThrow()
+  it('keeps the reading veil across theme changes, clamps it, and clears it on reset', () => {
+    const veil = ThemeStateModel.nextAppearance(start, { readingBlur: 6, readingTint: 30 })
+    const lagoon = ThemeStateModel.nextAppearance(veil, { customTheme: 'honu-lagoon' })
+    expect(ThemeStateModel.themeState(lagoon, 'light')).toMatchObject({ readingBlur: 6, readingTint: 30, customTheme: 'honu-lagoon' })
+    expect(ThemeStateModel.defineTheme(veil, { theme: NORD })).toMatchObject({ readingBlur: 6, readingTint: 30 })
+    expect(ThemeStateModel.nextAppearance(veil, { readingBlur: 99, readingTint: -5 })).toMatchObject({ readingBlur: 24, readingTint: 0 })
+    expect(ThemeStateModel.nextAppearance(lagoon, { reset: true })).toMatchObject({ readingBlur: 0, readingTint: 0 })
+    expect(appearanceSettings.schema({ readingBlur: 12, readingTint: 40 })).toMatchObject({ readingBlur: 12, readingTint: 40 })
+    expect(() => appearanceSettings.schema({ readingTint: 140 })).toThrow()
+    // The former readingPanel key stored by an earlier version does not break a Host that reads it.
+    expect(() => appearanceSettings.schema({ readingPanel: 'soft' } as never)).not.toThrow()
   })
 
   it('removes a theme and falls back to the preset when it was in use', () => {

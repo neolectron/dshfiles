@@ -17,6 +17,8 @@ const OVERRIDE_KEYS = ['greyHue', 'greyTint', 'accentHue', 'contrast'] as const
 const PRESET_ID_SET: ReadonlySet<string> = new Set(PRESET_IDS)
 const isPresetId = (value: string): value is ThemePresetId => PRESET_ID_SET.has(value)
 const asPreset = (value: unknown): ThemePresetId => (typeof value === 'string' && isPresetId(value) ? value : DEFAULT_APPEARANCE.preset)
+/** A whole number inside 0–max, as the settings schema stores it. */
+const clampTo = (value: number, max: number): number => Math.round(Math.min(max, Math.max(0, value)))
 const asNumber = (value: unknown): number | undefined => (typeof value === 'number' && Number.isFinite(value) ? value : undefined)
 
 /** The Appearance settings as stored: any field may be missing or hold a value an older or newer schema wrote. */
@@ -29,7 +31,8 @@ interface StoredAppearance {
   readonly interfaceFont?: unknown
   readonly codeFont?: unknown
   readonly readingFont?: unknown
-  readonly readingPanel?: unknown
+  readonly readingBlur?: unknown
+  readonly readingTint?: unknown
   readonly customTheme?: unknown
   readonly customThemes?: unknown
 }
@@ -55,7 +58,8 @@ function normaliseAppearance(stored: StoredAppearance | undefined): AppearanceSe
     interfaceFont: stored?.interfaceFont === 'system' ? 'system' : 'geist',
     codeFont: stored?.codeFont === 'system' ? 'system' : 'geist-mono',
     readingFont: stored?.readingFont === 'serif' ? 'serif' : 'sans',
-    readingPanel: stored?.readingPanel === 'soft' || stored?.readingPanel === 'strong' ? stored.readingPanel : 'off',
+    readingBlur: asNumber(stored?.readingBlur) ?? 0,
+    readingTint: asNumber(stored?.readingTint) ?? 0,
     customTheme: typeof stored?.customTheme === 'string' ? stored.customTheme : '',
     customThemes: Array.isArray(stored?.customThemes) ? stored.customThemes : [],
   }
@@ -64,7 +68,7 @@ function normaliseAppearance(stored: StoredAppearance | undefined): AppearanceSe
 /** The next stored settings for one `theme_set` call; `reset` restores the defaults and keeps the saved themes. */
 function nextAppearance(current: AppearanceSettings, input: ThemeSetInput): AppearanceSettings {
   const customThemes = current.customThemes ?? []
-  if (input.reset === true) return { ...DEFAULT_APPEARANCE, readingPanel: 'off', customTheme: '', customThemes }
+  if (input.reset === true) return { ...DEFAULT_APPEARANCE, readingBlur: 0, readingTint: 0, customTheme: '', customThemes }
   // A new preset or saved theme starts from its own values: overrides only survive when the same call names them.
   const switching = input.preset !== undefined || input.customTheme !== undefined
   const base: Overrides = switching ? {} : pickOverrides(current)
@@ -85,7 +89,8 @@ function nextAppearance(current: AppearanceSettings, input: ThemeSetInput): Appe
     interfaceFont: input.interfaceFont ?? current.interfaceFont,
     codeFont: input.codeFont ?? current.codeFont,
     readingFont: input.readingFont ?? current.readingFont,
-    readingPanel: input.readingPanel ?? current.readingPanel ?? 'off',
+    readingBlur: clampTo(input.readingBlur ?? current.readingBlur ?? 0, 24),
+    readingTint: clampTo(input.readingTint ?? current.readingTint ?? 0, 100),
     customTheme,
     customThemes,
   }
@@ -104,7 +109,8 @@ function defineTheme(current: AppearanceSettings, input: ThemeDefineInput): Appe
     interfaceFont: current.interfaceFont,
     codeFont: current.codeFont,
     readingFont: current.readingFont,
-    readingPanel: current.readingPanel ?? 'off',
+    readingBlur: current.readingBlur ?? 0,
+    readingTint: current.readingTint ?? 0,
     customTheme: definition.id,
     customThemes,
   }
@@ -157,7 +163,8 @@ function themeState(settings: AppearanceSettings, scheme: string): ThemeState {
     interfaceFont: settings.interfaceFont,
     codeFont: settings.codeFont,
     readingFont: settings.readingFont,
-    readingPanel: settings.readingPanel ?? 'off',
+    readingBlur: settings.readingBlur ?? 0,
+    readingTint: settings.readingTint ?? 0,
     scheme,
     isDefault:
       active === undefined &&

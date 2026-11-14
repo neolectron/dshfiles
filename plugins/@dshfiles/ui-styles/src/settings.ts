@@ -41,14 +41,19 @@ export const appearanceSettings = defineSettings({
     ])
       .default('sans')
       .description('Font for reply prose in threads. Serif uses a font already on your device; code and tables keep their fonts.'),
-    readingPanel: Schema.union([
-      Schema.const('off').description('Off (default): the backdrop runs under the text, softened only by its glass'),
-      Schema.const('soft').description('Soft: a light frosted panel behind the conversation column'),
-      Schema.const('strong').description('Strong: an almost opaque frosted panel behind the conversation column'),
-    ])
-      .default('off')
+    readingBlur: Schema.natural()
+      .min(0)
+      .max(24)
+      .default(0)
       .description(
-        'A frosted glass panel behind the conversation column only, so an animated backdrop stays visible on the sides but calm under the text. Applies to themes with a backdrop.',
+        'Blur under the conversation column while a backdrop scene shows, in px (0–24). The blur is a still of the scene, computed once, so it costs nothing per frame; the scene keeps moving on the sides.',
+      ),
+    readingTint: Schema.natural()
+      .min(0)
+      .max(100)
+      .default(0)
+      .description(
+        'Extra tint of the theme background under the conversation column while a backdrop shows, in percent (0–100). Each theme already lays the least tint its text needs to stay readable over its scene.',
       ),
     customTheme: Schema.string()
       .default('')

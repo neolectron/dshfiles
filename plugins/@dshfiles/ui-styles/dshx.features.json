@@ -120,7 +120,7 @@
     {
       "id": "saved-themes",
       "title": "Saved and gallery themes: any theme on request, Claude Code scenes, and Dracula",
-      "summary": "A theme is data: exact colours per scheme (eleven neutral steps, accent and status colours), optional syntax colours and an optional animated backdrop behind the conversation. The agent saves any theme the user asks for with theme_define and it applies live, no restart; theme_set customTheme switches between saved themes and presets; theme_remove deletes one. The built-in Dracula preset uses the same format: official Dracula Classic in dark with a night sky (twinkling stars, a violet moon), official Alucard Classic in light. Sixteen built-in gallery themes paint the twenty animated scenes of Claude Code’s theme-examples plugin (Apache-2.0, vendored, built on the Host and served to the client by the scene method), each under its glass in the scheme it is drawn for. An optional reading panel (off, soft, strong) frosts only the conversation column so the backdrop stays calm under the text.",
+      "summary": "A theme is data: exact colours per scheme (eleven neutral steps, accent and status colours), optional syntax colours and an optional animated backdrop behind the conversation. The agent saves any theme the user asks for with theme_define and it applies live, no restart; theme_set customTheme switches between saved themes and presets; theme_remove deletes one. The built-in Dracula preset uses the same format: official Dracula Classic in dark with a night sky (twinkling stars, a violet moon), official Alucard Classic in light. Sixteen built-in gallery themes paint the twenty animated scenes of Claude Code’s theme-examples plugin (Apache-2.0, vendored, built on the Host and served to the client by the scene method), each under its glass in the scheme it is drawn for. Under the conversation column each theme lays the least veil its text needs over its scene; readingBlur and readingTint add a pre-blurred still and more tint, with no per-frame filter.",
       "onboarding": {
         "firstAction": "Ask the agent for a theme, for example “make DSH look like Nord”, or pick the Dracula preset in Settings › Appearance.",
         "doneWhen": "The app takes the theme's exact colours at once, with its backdrop behind the conversation if it has one."
@@ -143,10 +143,10 @@
           "coveredBy": ["ui-styles.theme-definition-parse", "ui-styles.saved-theme-lifecycle"]
         },
         {
-          "key": "readingPanel",
-          "defaultValue": "off",
-          "constraints": "off, soft or strong; applies only while a backdrop shows; kept across theme changes, off after reset.",
-          "coveredBy": ["ui-styles.reading-panel"]
+          "key": "readingBlur / readingTint",
+          "defaultValue": "0 / 0",
+          "constraints": "0–24 px and 0–100 %; add to the theme's own readability veil; kept across theme changes, 0 after reset.",
+          "coveredBy": ["ui-styles.reading-veil", "ui-styles.readability-veil"]
         }
       ],
       "states": ["preset", "saved-theme", "saved-theme-overridden", "saved-theme-missing", "gallery-theme", "scene-loading"],
@@ -200,9 +200,15 @@
         },
         {
           "kind": "unit-test",
-          "id": "ui-styles.reading-panel",
+          "id": "ui-styles.reading-veil",
           "file": "plugins/@dshfiles/plugin-ui/tests/gallery.test.ts",
-          "testName": "puts a frosted panel behind the conversation column only when asked, and only with a backdrop"
+          "testName": "blurs a still of the scene under the column and tints it as far as asked, with no filter per frame"
+        },
+        {
+          "kind": "unit-test",
+          "id": "ui-styles.readability-veil",
+          "file": "plugins/@dshfiles/plugin-ui/tests/gallery.test.ts",
+          "testName": "keeps its text readable over its scene with a veil, whatever the user asks"
         }
       ],
       "telemetry": [

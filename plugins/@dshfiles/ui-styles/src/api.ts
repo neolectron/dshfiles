@@ -12,7 +12,6 @@ const presetId = Schema.Literals(['warm-stone', 'neutral', 'high-contrast', 'sla
 const uiFont = Schema.Literals(['geist', 'system'])
 const codeFont = Schema.Literals(['geist-mono', 'system'])
 const readingFont = Schema.Literals(['sans', 'serif'])
-const readingPanel = Schema.Literals(['off', 'soft', 'strong'])
 const finite = Schema.Number.check(Schema.isFinite())
 
 const presetSchema = Schema.Struct({ id: presetId, label: Schema.String, description: Schema.String })
@@ -47,8 +46,9 @@ const themeStateSchema = Schema.Struct({
   codeFont,
   /** Reply prose: the interface sans (default) or a system serif. */
   readingFont,
-  /** Frosted panel behind the conversation column while a backdrop shows. */
-  readingPanel,
+  /** The reading veil the user asked for: blur (px, 0–24) and extra tint (percent, 0–100) under the conversation column. */
+  readingBlur: finite,
+  readingTint: finite,
   /** The Host's light/dark preference (Settings › Theme), read-only here; `unknown` when that row is absent. */
   scheme: Schema.String,
   /** True when every value is the default, so the static first-paint theme is the whole theme. */
@@ -88,10 +88,16 @@ const themeSetInputSchema = Schema.Struct({
   readingFont: Schema.optional(
     readingFont.annotate({ description: 'Reply prose font in threads: sans (default) or serif (a system serif, nothing downloaded).' }),
   ),
-  readingPanel: Schema.optional(
-    readingPanel.annotate({
+  readingBlur: Schema.optional(
+    finite.annotate({
       description:
-        'A frosted glass panel behind the conversation column only (not the sides), so an animated backdrop is calm under the text: off (default), soft or strong. Applies to themes with a backdrop; kept across theme changes.',
+        'Blur under the conversation column while a backdrop scene shows, in px, 0–24 (0: none). Cheap: a still of the scene is blurred once; the scene keeps moving on the sides.',
+    }),
+  ),
+  readingTint: Schema.optional(
+    finite.annotate({
+      description:
+        'Extra tint of the theme background under the conversation column, in percent, 0–100 (0: only what the theme needs for readable text). Both are kept across theme changes; reset sets them to 0.',
     }),
   ),
 })

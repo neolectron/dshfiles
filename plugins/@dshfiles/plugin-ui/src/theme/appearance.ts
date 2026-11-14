@@ -9,7 +9,7 @@ import { DRACULA_THEME } from './dracula.ts'
 import { GALLERY_IDS, GALLERY_THEMES } from './gallery.ts'
 import { WARM_STONE, type PaletteInput } from './palette.ts'
 import { ThemeCss } from './theme-css.ts'
-import { ThemeDefinitionModel, type ReadingPanel, type SceneSources, type ThemeDefinition } from './theme-definition.ts'
+import { READING_BOUNDS, ThemeDefinitionModel, type ReadingVeil, type SceneSources, type ThemeDefinition } from './theme-definition.ts'
 
 export type ThemePresetId = 'warm-stone' | 'neutral' | 'high-contrast' | 'slate-blue' | 'moss' | 'dracula'
 export type UiFont = 'geist' | 'system'
@@ -71,8 +71,12 @@ export interface AppearanceSettings {
   readonly codeFont: CodeFont
   /** Reply prose in the transcript: the interface sans (default) or a system serif (productivity pass T6.6). */
   readonly readingFont: ReadingFont
-  /** A frosted panel behind the conversation column while a backdrop shows (default off). */
-  readonly readingPanel?: ReadingPanel
+  /**
+   * The reading veil under the conversation column while a backdrop shows: blur of a still of the scene (px, 0–24) and
+   * extra tint (percent, 0–100). Each theme keeps its own readability floor whatever these say; 0 adds nothing.
+   */
+  readonly readingBlur?: number
+  readonly readingTint?: number
   /** Id of a saved theme in `customThemes` or of a built-in gallery theme; when it names one, it replaces the preset. Empty: the preset. */
   readonly customTheme?: string
   /** Saved theme definitions, as stored: each is parsed on use and an invalid one is skipped. */
@@ -190,7 +194,7 @@ function runtimeThemeCss(settings: Partial<AppearanceSettings> | undefined, scen
     const block = (selector: string, scheme: 'light' | 'dark') => [`${selector} {`, ...ThemeCss.blockDeclarations(input, scheme), '}'].join('\n')
     parts.push(block(RUNTIME_LIGHT_SELECTOR, 'light'), block(RUNTIME_DARK_SELECTOR, 'dark'))
     if (pinned !== undefined)
-      parts.push(ThemeDefinitionModel.css(pinned, { light: RUNTIME_LIGHT_SELECTOR, dark: RUNTIME_DARK_SELECTOR }, scenes, settings?.readingPanel ?? 'off'))
+      parts.push(ThemeDefinitionModel.css(pinned, { light: RUNTIME_LIGHT_SELECTOR, dark: RUNTIME_DARK_SELECTOR }, scenes, readingVeil(settings)))
   }
   const uiFont = settings?.interfaceFont ?? DEFAULT_APPEARANCE.interfaceFont
   const codeFont = settings?.codeFont ?? DEFAULT_APPEARANCE.codeFont
@@ -212,6 +216,14 @@ function runtimeThemeCss(settings: Partial<AppearanceSettings> | undefined, scen
       ].join('\n'),
     )
   return parts.join('\n\n')
+}
+
+const bounded = (value: number | undefined, key: keyof typeof READING_BOUNDS): number =>
+  typeof value === 'number' && Number.isFinite(value) ? clamp(value, READING_BOUNDS[key].min, READING_BOUNDS[key].max) : 0
+
+/** The user's reading veil, inside its bounds. */
+function readingVeil(settings: Partial<AppearanceSettings> | undefined): ReadingVeil {
+  return { blur: bounded(settings?.readingBlur, 'blur'), tint: bounded(settings?.readingTint, 'tint') }
 }
 
 /** The built-in scenes the active theme paints, so the client can ask the Host for their SVG. */

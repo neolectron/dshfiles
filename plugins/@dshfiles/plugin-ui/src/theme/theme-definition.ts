@@ -8,6 +8,7 @@
  * the Shiki tokens it gives. A scheme the definition leaves out keeps the generated palette.
  */
 import { PaletteMath, type PaletteInput, type Scheme } from './palette.ts'
+import { ReadabilityModel, type Rgb, type VeilInput } from './readability.ts'
 import { SCENE_IDS, SceneCatalog, type SceneGlass } from './scene-catalog.ts'
 
 /** The eleven neutral steps, in palette order (see `Palette.neutral`). */
@@ -187,11 +188,11 @@ function checkScheme(value: unknown, where: string, errors: string[]): SchemeThe
 function checkGlass(value: unknown, where: string, errors: string[]): SceneGlass | undefined {
   if (value === undefined) return undefined
   const inRange = (raw: unknown, min: number, max: number): raw is number => typeof raw === 'number' && Number.isFinite(raw) && raw >= min && raw <= max
-  if (!isRecord(value) || !inRange(value.blur, 0, 30) || !inRange(value.opacity, 0, 1) || typeof value.tint !== 'string' || !HEX.test(value.tint)) {
-    errors.push(`${where}: blur 0–30, a #rrggbb tint and opacity 0–1`)
+  if (!isRecord(value) || !inRange(value.opacity, 0, 1) || typeof value.tint !== 'string' || !HEX.test(value.tint)) {
+    errors.push(`${where}: a #rrggbb tint and opacity 0–1`)
     return undefined
   }
-  return { blur: value.blur, tint: value.tint.toLowerCase(), opacity: value.opacity }
+  return { tint: value.tint.toLowerCase(), opacity: value.opacity }
 }
 
 /** Every colour role, or undefined when one is missing (its error is already recorded). */
@@ -318,8 +319,26 @@ function pins(theme: SchemeTheme): string[] {
 /** The main workbench: the conversation and its tabs, never the sidebars, dialogs or the composer. */
 export const BACKDROP_HOST = '[data-workbench-region="main"] .dshfiles-workbench-theme'
 
-/** Scene SVG sources by id, as the client has them; a scene not loaded yet is left out until it arrives. */
-export type SceneSources = ReadonlyMap<string, string>
+/** A built-in scene as the client has it: the SVG, and a coarse pixel sample of its resting picture once taken. */
+export interface SceneSource {
+  readonly svg: string
+  /** Pixels of the resting picture under the conversation column; absent until the client has sampled it. */
+  readonly sample?: readonly Rgb[]
+}
+
+/** Scene sources by id; a scene not loaded yet is left out until it arrives. */
+export type SceneSources = ReadonlyMap<string, SceneSource>
+
+/** The user's reading veil: blur of the scene still under the column (px) and the extra tint (percent, 0–100). */
+export interface ReadingVeil {
+  readonly blur: number
+  readonly tint: number
+}
+
+export const READING_BOUNDS = { blur: { min: 0, max: 24 }, tint: { min: 0, max: 100 } } as const
+
+/** Used while a scene has no pixel sample (the client could not decode it): a veil that reads over most scenes. */
+const UNSAMPLED_VEIL = 0.7
 
 const declarationLines = (text: string): string[] =>
   text
@@ -329,34 +348,58 @@ const declarationLines = (text: string): string[] =>
     .map(part => `  ${part};`)
 
 /**
- * The glass: a tint at its opacity over a blur of what lies under it, strongest under the conversation column and fading
- * out toward the sides, so the scene stays crisp at the edges as in Claude Code.
+ * The glass: the scene's tint at its opacity, strongest under the conversation column and fading out toward the sides,
+ * so the scene stays crisp at the edges as in Claude Code. A gradient, not a mask or a filter: nothing per frame.
  */
 function glassDeclarations(glass: SceneGlass): string[] {
-  const fade = 'linear-gradient(90deg, transparent 0%, #000 22%, #000 78%, transparent 100%)'
-  return [
-    `  background-color: ${rgba(glass.tint, glass.opacity)};`,
-    ...(glass.blur > 0 ? [`  backdrop-filter: blur(${glass.blur}px);`, `  -webkit-backdrop-filter: blur(${glass.blur}px);`] : []),
-    `  mask-image: ${fade};`,
-    `  -webkit-mask-image: ${fade};`,
-  ]
+  const tint = rgba(glass.tint, glass.opacity)
+  return [`  background-image: linear-gradient(90deg, transparent 0%, ${tint} 22%, ${tint} 78%, transparent 100%);`]
 }
 
-/** A frosted panel behind the conversation column only, so a backdrop never runs under the text: none, soft or strong. */
-export type ReadingPanel = 'off' | 'soft' | 'strong'
-export const READING_PANELS = ['off', 'soft', 'strong'] as const satisfies readonly ReadingPanel[]
-
-const PANEL_LEVELS = { soft: { opacity: 0.5, blur: 12 }, strong: { opacity: 0.8, blur: 22 } } as const
+/**
+ * The veil a theme lays under its text on a backdrop: at least the opacity its readability floor needs over that scene
+ * (`ReadabilityModel.minimumVeil`), raised by the user's tint. 0 when the backdrop has no scene and no tint is asked.
+ */
+function veilOpacity(theme: SchemeTheme, source: SceneSource | undefined, reading: ReadingVeil): number {
+  const user = Math.min(1, Math.max(0, reading.tint / 100))
+  if (source === undefined) return user
+  const colours = theme.colours
+  const glass = theme.backdrop?.glass
+  if (source.sample === undefined) return Math.max(UNSAMPLED_VEIL, user)
+  let input: VeilInput = {
+    sample: source.sample,
+    veil: ReadabilityModel.hexToRgb(colours.bg),
+    texts: [
+      { colour: ReadabilityModel.hexToRgb(colours.text), min: 4.5 },
+      { colour: ReadabilityModel.hexToRgb(colours.muted), min: 3 },
+    ],
+  }
+  if (glass !== undefined) input = { ...input, glass: { colour: ReadabilityModel.hexToRgb(glass.tint), opacity: glass.opacity } }
+  return Math.max(ReadabilityModel.minimumVeil(input), user)
+}
 
 /**
- * The reading panel: the column's own width (the shared `--dsh-chat-content-width`, plus a margin), full height of the
- * conversation, centred like the column. It sits in the non-scrolling conversation body, made a stacking context so the
- * panel stays under every message and the composer and over the backdrop. Its sides fade so it reads as glass, not a card.
+ * The reading veil: a band the column's own width (the shared `--dsh-chat-content-width`, plus a margin) and the
+ * conversation's full height, in the non-scrolling conversation body, made a stacking context so the band stays under
+ * every message and the composer and over the backdrop. It paints the theme background at the veil opacity over a
+ * pre-blurred still of the scene, fixed to the viewport like the scene so the two line up. Static: no filter runs per
+ * frame, and the motion under the text stops while the sides keep moving.
  */
-function readingPanelCss(host: string, level: Exclude<ReadingPanel, 'off'>, tint: string): string {
-  const { opacity, blur } = PANEL_LEVELS[level]
+function readingVeilCss(host: string, source: SceneSource | undefined, opacity: number, blur: number, bg: string): string {
   const body = `${host} [data-conversation-content]`
   const fade = 'linear-gradient(90deg, transparent 0, #000 32px, #000 calc(100% - 32px), transparent 100%)'
+  const tint = rgba(bg, opacity)
+  const still = source !== undefined && blur > 0 ? SceneCatalog.image(SceneCatalog.blurred(source.svg, blur)) : undefined
+  const background =
+    still === undefined
+      ? [`  background-color: ${tint};`]
+      : [
+          `  background-image: linear-gradient(${tint}, ${tint}), ${still};`,
+          '  background-attachment: scroll, fixed;',
+          '  background-size: auto, cover;',
+          '  background-position: center;',
+          '  background-repeat: no-repeat;',
+        ]
   return [
     `${body} {`,
     '  isolation: isolate;',
@@ -366,29 +409,30 @@ function readingPanelCss(host: string, level: Exclude<ReadingPanel, 'off'>, tint
     '  position: absolute;',
     '  top: 0;',
     '  bottom: 0;',
-    '  left: 50%;',
+    '  left: 0;',
+    '  right: 0;',
+    '  margin-inline: auto;',
     '  width: min(100%, calc(var(--dsh-chat-content-width, 760px) + 96px));',
-    '  transform: translateX(-50%);',
     '  z-index: -1;',
     '  pointer-events: none;',
-    `  background-color: ${rgba(tint, opacity)};`,
-    `  backdrop-filter: blur(${blur}px) saturate(1.1);`,
-    `  -webkit-backdrop-filter: blur(${blur}px) saturate(1.1);`,
+    ...background,
     `  mask-image: ${fade};`,
     `  -webkit-mask-image: ${fade};`,
     '}',
   ].join('\n')
 }
 
-function backdropCss(scope: string, backdrop: Backdrop, scenes: SceneSources, panel: ReadingPanel, tint: string): string {
+function backdropCss(scope: string, theme: SchemeTheme, backdrop: Backdrop, scenes: SceneSources, reading: ReadingVeil): string {
   const host = `${scope} ${BACKDROP_HOST}`
   // Four pseudo-elements host the items, back to front: two on the dockview between two on the shell, all under content.
   const slots = [`${host}::before`, `${host} .dv-dockview::before`, `${host} .dv-dockview::after`, `${host}::after`]
-  const sceneSource = backdrop.scene === undefined ? undefined : scenes.get(backdrop.scene)
+  const source = backdrop.scene === undefined ? undefined : scenes.get(backdrop.scene)
   const items: string[][] = []
-  if (sceneSource !== undefined)
+  // Fixed to the viewport, so the blurred still in the reading veil lines up with it.
+  if (source !== undefined)
     items.push([
-      '  background-image: ' + SceneCatalog.image(sceneSource) + ';',
+      '  background-image: ' + SceneCatalog.image(source.svg) + ';',
+      '  background-attachment: fixed;',
       '  background-size: cover;',
       '  background-position: center;',
       '  background-repeat: no-repeat;',
@@ -420,9 +464,11 @@ function backdropCss(scope: string, backdrop: Backdrop, scenes: SceneSources, pa
     )
   })
   if (backdrop.keyframes !== undefined) blocks.push(backdrop.keyframes)
-  if (panel !== 'off') blocks.push(readingPanelCss(host, panel, tint))
+  const opacity = veilOpacity(theme, source, reading)
+  const blur = Math.min(READING_BOUNDS.blur.max, Math.max(0, reading.blur))
+  if (opacity > 0 || (blur > 0 && source !== undefined)) blocks.push(readingVeilCss(host, source, opacity, blur, theme.colours.bg))
   const used = slots.slice(0, items.length).join(', ')
-  const resting = sceneSource === undefined ? [] : [`  ${slots[0]} { background-image: ${SceneCatalog.image(SceneCatalog.resting(sceneSource))}; }`]
+  const resting = source === undefined ? [] : [`  ${slots[0]} { background-image: ${SceneCatalog.image(SceneCatalog.resting(source.svg))}; }`]
   blocks.push('@media (prefers-reduced-motion: reduce) {', `  ${used} { animation: none !important; }`, ...resting, '}')
   return blocks.join('\n')
 }
@@ -435,7 +481,7 @@ function definitionCss(
   definition: ThemeDefinition,
   selectors: { readonly light: string; readonly dark: string },
   scenes: SceneSources = new Map(),
-  panel: ReadingPanel = 'off',
+  reading: ReadingVeil = { blur: 0, tint: 0 },
 ): string {
   const parts: string[] = []
   for (const scheme of ['light', 'dark'] as const satisfies readonly Scheme[]) {
@@ -444,7 +490,7 @@ function definitionCss(
     const selector = selectors[scheme]
     parts.push([`${selector} {`, ...pins(theme), '}'].join('\n'))
     if (theme.backdrop !== undefined)
-      parts.push(backdropCss(scheme === 'light' ? `${selector}:not([data-ds-dark-theme])` : selector, theme.backdrop, scenes, panel, theme.colours.bg))
+      parts.push(backdropCss(scheme === 'light' ? `${selector}:not([data-ds-dark-theme])` : selector, theme, theme.backdrop, scenes, reading))
   }
   return parts.join('\n\n')
 }

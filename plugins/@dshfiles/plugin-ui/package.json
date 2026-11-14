@@ -74,6 +74,10 @@
       "types": "./src/theme/gallery.ts",
       "default": "./src/theme/gallery.ts"
     },
+    "./theme/readability": {
+      "types": "./src/theme/readability.ts",
+      "default": "./src/theme/readability.ts"
+    },
     "./vite": {
       "types": "./src/vite.ts",
       "default": "./src/vite.ts"
