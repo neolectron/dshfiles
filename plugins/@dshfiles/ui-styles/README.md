@@ -10,6 +10,9 @@
 
 ![The reading veil behind the conversation column](docs/screenshots/reading-panel.png)
 
+Want a quick look at the gallery? Ask an agent to run the [theme tour](docs/theme-tour.md): about 20 seconds of
+themes in your current light or dark mode, then your own theme back.
+
 The one bundle that compiles and injects the shared `@dshfiles/plugin-ui` stylesheet (the ordered union of every owned
 plugin's classes), and the owner of the theme.
 
