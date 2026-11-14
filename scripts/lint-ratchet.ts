@@ -93,6 +93,7 @@ const astGrepVendored = [
   'plugins/@dshfiles/subprocess-local/src/native/**',
   'plugins/@dshfiles/goal-tool/src/native/**',
   'plugins/@dshfiles/tool-ask-user/src/native/**',
+  'plugins/@dshfiles/ui-styles/src/vendor/**',
   'plugins/@dshfiles/tool-subagent/src/native/**',
   'plugins/@dshfiles/session-controller/src/host.ts',
   'plugins/@dshfiles/subprocess-local/src/host.ts',

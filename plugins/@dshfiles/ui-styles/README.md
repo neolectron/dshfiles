@@ -4,6 +4,10 @@
 
 ![The Dracula preset's night sky behind a conversation](docs/screenshots/dracula-night-sky.png)
 
+![The Koi Mosaic gallery theme in light](docs/screenshots/gallery-koi-mosaic.png)
+
+![The Night Reef gallery theme in dark](docs/screenshots/gallery-night-reef.png)
+
 The one bundle that compiles and injects the shared `@dshfiles/plugin-ui` stylesheet (the ordered union of every owned
 plugin's classes), and the owner of the theme.
 
@@ -32,6 +36,16 @@ plugin's classes), and the owner of the theme.
   animations only: `url()`, `@import` and braces in a layer are refused, so a theme never loads anything, and
   `prefers-reduced-motion` stops its animations. Any grey, accent or contrast override drops the pins and the backdrop
   in favour of the generated palette.
+- **Gallery themes.** Sixteen built-in themes paint the twenty animated scenes of Claude Code's `theme-examples`
+  plugin (Honu Lagoon, Koi Mosaic, Night Reef, Snow Pines, Aurora, Blueprint…; the four drawn for both kinds of window
+  are paired into one light-and-dark theme). The scene code is vendored unchanged under `src/vendor/theme-examples`
+  (Apache-2.0, provenance and update policy in its `NOTICE.md`) and runs on the Host only: the client asks the `scene`
+  method of the theme API for the SVG it needs and paints it as a data URL, so the browser bundle never carries the
+  builders and nothing is fetched from the network. A scene sits under its own glass (blur, tint, opacity), strongest
+  under the conversation column. Each scene only shows in the scheme it is drawn for; the colours are the generated
+  palette retuned to the scene (WCAG AA). An SVG painted as an image cannot see `prefers-reduced-motion`, so the page
+  swaps in the scene's own resting picture under that query. `theme_set { customTheme: "night-reef" }` picks one;
+  `theme_get` lists them in `galleryThemes`. A saved theme can paint a scene too (`backdrop.scene`).
 - **Dracula.** A built-in saved theme from the [official spec](https://draculatheme.com/spec): Dracula Classic in dark,
   with a night sky (a fixed star field, two star layers twinkling out of phase, a violet moon top right; only `opacity`
   animates, so nothing repaints per frame), and Alucard Classic, Dracula's official light companion, in light. Every

@@ -119,8 +119,8 @@
     },
     {
       "id": "saved-themes",
-      "title": "Saved themes: any theme on request, and Dracula",
-      "summary": "A theme is data: exact colours per scheme (eleven neutral steps, accent and status colours), optional syntax colours and an optional animated backdrop behind the conversation. The agent saves any theme the user asks for with theme_define and it applies live, no restart; theme_set customTheme switches between saved themes and presets; theme_remove deletes one. The built-in Dracula preset uses the same format: official Dracula Classic in dark with a night sky (twinkling stars, a violet moon), official Alucard Classic in light.",
+      "title": "Saved and gallery themes: any theme on request, Claude Code scenes, and Dracula",
+      "summary": "A theme is data: exact colours per scheme (eleven neutral steps, accent and status colours), optional syntax colours and an optional animated backdrop behind the conversation. The agent saves any theme the user asks for with theme_define and it applies live, no restart; theme_set customTheme switches between saved themes and presets; theme_remove deletes one. The built-in Dracula preset uses the same format: official Dracula Classic in dark with a night sky (twinkling stars, a violet moon), official Alucard Classic in light. Sixteen built-in gallery themes paint the twenty animated scenes of Claude Code’s theme-examples plugin (Apache-2.0, vendored, built on the Host and served to the client by the scene method), each under its glass in the scheme it is drawn for.",
       "onboarding": {
         "firstAction": "Ask the agent for a theme, for example “make DSH look like Nord”, or pick the Dracula preset in Settings › Appearance.",
         "doneWhen": "The app takes the theme's exact colours at once, with its backdrop behind the conversation if it has one."
@@ -143,17 +143,23 @@
           "coveredBy": ["ui-styles.theme-definition-parse", "ui-styles.saved-theme-lifecycle"]
         }
       ],
-      "states": ["preset", "saved-theme", "saved-theme-overridden", "saved-theme-missing"],
+      "states": ["preset", "saved-theme", "saved-theme-overridden", "saved-theme-missing", "gallery-theme", "scene-loading"],
       "failureModes": [
         "A definition with a missing or malformed colour, a preset id, or a backdrop that loads anything is refused with every problem listed, so the agent can fix it in one retry.",
         "The chosen saved theme was deleted or became invalid: the preset applies.",
-        "Text under WCAG AA is reported in contrastWarnings; the theme still applies so an official palette is not altered."
+        "Text under WCAG AA is reported in contrastWarnings; the theme still applies so an official palette is not altered.",
+        "The Host cannot serve a scene: the theme applies with its colours and glass, without the scene, and the browser console names the scene."
       ],
       "externalDependencies": [],
       "verification": [
         {
           "kind": "gherkin",
           "id": "ui-styles.saved-theme-agent",
+          "featureFile": "tooling/dshx/e2e/features/ui-styles.feature"
+        },
+        {
+          "kind": "gherkin",
+          "id": "ui-styles.gallery-theme-agent",
           "featureFile": "tooling/dshx/e2e/features/ui-styles.feature"
         },
         {
@@ -173,6 +179,18 @@
           "id": "ui-styles.dracula-official",
           "file": "plugins/@dshfiles/plugin-ui/tests/theme-definition.test.ts",
           "testName": "is a valid definition with the official Dracula and Alucard backgrounds"
+        },
+        {
+          "kind": "unit-test",
+          "id": "ui-styles.scene-safety",
+          "file": "plugins/@dshfiles/ui-styles/tests/scenes.test.ts",
+          "testName": "builds every catalog scene as a self-contained SVG that loads nothing"
+        },
+        {
+          "kind": "unit-test",
+          "id": "ui-styles.gallery-aa",
+          "file": "plugins/@dshfiles/plugin-ui/tests/gallery.test.ts",
+          "testName": "are valid definitions whose text keeps WCAG AA"
         }
       ],
       "telemetry": [

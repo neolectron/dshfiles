@@ -43,6 +43,17 @@ Feature: One shared plugin stylesheet
     Then theme_set answered with the default theme
     And the static default theme is the whole theme
 
+  @scenario:ui-styles.gallery-theme-agent
+  Scenario: The agent switches to a built-in gallery theme and its animated scene is painted
+    Given the isolated plugin composition of "@dshfiles/ui-styles,@dshfiles/ai-accounts,@dshfiles/settings-shell" is booted
+    When a Command Code account backed by a local fake provider is added
+    And a new thread on the fake model calls theme_set with the gallery theme "night-reef"
+    Then theme_set answered with the saved theme "night-reef"
+    And the runtime theme paints the scene of "night-reef"
+    When the thread calls theme_set with reset
+    Then theme_set answered with the default theme
+    And the static default theme is the whole theme
+
   @scenario:ui-styles.touch-baseline
   Scenario: The touch baseline leaves dshx utilities in charge of touch-action
     Given the isolated plugin composition of "@dshfiles/thread-sidebar, @dshfiles/session-controller, @dshfiles/rich-composer, @dshfiles/chat" is booted

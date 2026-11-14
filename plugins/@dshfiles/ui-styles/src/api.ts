@@ -1,5 +1,6 @@
 import { defineApi, method } from '@dshfiles/dshx/api'
 import { ACCENT_ROLES, MAX_BACKDROP_LAYERS, NEUTRAL_ROLES, ROLE_GUIDE, SYNTAX_ROLES } from '@dshfiles/plugin-ui/theme/definition'
+import { SCENE_IDS } from '@dshfiles/plugin-ui/theme/scenes'
 import * as Schema from 'effect/Schema'
 
 /**
@@ -51,6 +52,8 @@ const themeStateSchema = Schema.Struct({
   isDefault: Schema.Boolean,
   presets: Schema.Array(presetSchema),
   savedThemes: Schema.Array(savedThemeSchema),
+  /** Built-in themes painting one of Claude Code's animated scenes; choose one with theme_set customTheme. */
+  galleryThemes: Schema.Array(savedThemeSchema),
   /** Text pairs of the active theme under WCAG AA; tell the user, who may keep them (an official palette) or ask for a fix. */
   contrastWarnings: Schema.Array(Schema.String),
 })
@@ -70,7 +73,7 @@ const themeSetInputSchema = Schema.Struct({
   customTheme: Schema.optional(
     Schema.NullOr(Schema.String).annotate({
       description:
-        'Id of a saved theme (savedThemes in theme_get) to use instead of the preset; clears overrides not given in the same call. null returns to the preset.',
+        'Id of a saved theme (savedThemes in theme_get) or a built-in gallery theme (galleryThemes: honu-lagoon, koi-mosaic, night-reef, snow-pines, aurora…) to use instead of the preset; clears overrides not given in the same call. null returns to the preset. A gallery scene made for one kind of window shows only in that scheme: set ui-theme preference to match.',
     }),
   ),
   greyHue: overrideInput('Hue of the greys, 0–360.'),
@@ -99,10 +102,21 @@ const syntaxSchema = Schema.Struct(
     readonly [K in (typeof SYNTAX_ROLES)[number]]: Schema.optional<Schema.String>
   },
 ).annotate({ description: 'Code colours; a missing role keeps the generated one.' })
+const glassSchema = Schema.Struct({ blur: Schema.Number, tint: Schema.String, opacity: Schema.Number }).annotate({
+  description: 'Frosted layer between the backdrop and the conversation column: blur 0–30 px, a #rrggbb tint, opacity 0–1.',
+})
 const backdropSchema = Schema.Struct({
-  layers: Schema.Array(Schema.String).annotate({
-    description: `1 to ${MAX_BACKDROP_LAYERS} full-size layers behind the conversation, back to front; each is CSS declarations without braces, e.g. "background-image: radial-gradient(...); animation: snow 8s linear infinite". Gradients and animations only: url() and @import are refused. Animate opacity or transform, not backgrounds, so nothing repaints per frame; reduced motion stops the animations.`,
-  }),
+  scene: Schema.optional(
+    Schema.String.annotate({
+      description: `A built-in animated scene painted at the back: ${SCENE_IDS.join(', ')}. Each is drawn for a light or a dark window (galleryThemes).`,
+    }),
+  ),
+  glass: Schema.optional(glassSchema),
+  layers: Schema.optional(
+    Schema.Array(Schema.String).annotate({
+      description: `Up to ${MAX_BACKDROP_LAYERS} full-size layers over the scene, back to front; each is CSS declarations without braces, e.g. "background-image: radial-gradient(...); animation: snow 8s linear infinite". Gradients and animations only: url() and @import are refused. Animate opacity or transform, not backgrounds, so nothing repaints per frame; reduced motion stops the animations. A scene, layers and glass take at most 4 slots together.`,
+    }),
+  ),
   keyframes: Schema.optional(Schema.String.annotate({ description: 'The @keyframes blocks the layers use; prefix the names with the theme id.' })),
 })
 const schemeThemeSchema = Schema.Struct({ colours: coloursSchema, syntax: Schema.optional(syntaxSchema), backdrop: Schema.optional(backdropSchema) })
@@ -132,7 +146,12 @@ export type ThemeSetInput = typeof themeSetInputSchema.Type
 export type ThemeDefineInput = typeof themeDefineInputSchema.Type
 
 const render = (state: ThemeState): string =>
-  JSON.stringify({ ...state, presets: state.presets.map(preset => preset.id), savedThemes: state.savedThemes.map(theme => theme.id) })
+  JSON.stringify({
+    ...state,
+    presets: state.presets.map(preset => preset.id),
+    savedThemes: state.savedThemes.map(theme => theme.id),
+    galleryThemes: state.galleryThemes.map(theme => `${theme.id} (${theme.schemes.join('+')})`),
+  })
 
 export const themeApi = defineApi({
   id: 'ui-theme-appearance',
@@ -159,6 +178,11 @@ export const themeApi = defineApi({
       description:
         'Save a theme the user asked for (any named or described theme: Nord, Solarized, "a cyberpunk theme with rain") and, by default, switch to it, live with no restart. Look up the theme’s official palette first when it has one and keep its exact colours; give only the schemes it really has. An optional backdrop animates behind the conversation. Returns contrastWarnings for text under WCAG AA: tell the user. Call only when the user asked for a theme. Reversible: theme_set preset returns to a preset; theme_remove deletes it.',
       tool: { name: 'theme_define', readOnly: false, render },
+    }),
+    scene: method({
+      input: Schema.Struct({ id: Schema.String }),
+      output: Schema.Struct({ id: Schema.String, svg: Schema.String }),
+      description: 'The SVG of a built-in backdrop scene, for the client that paints the active theme. Read-only; not an agent tool.',
     }),
     remove: method({
       input: themeRemoveInputSchema,

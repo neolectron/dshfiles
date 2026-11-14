@@ -43,7 +43,7 @@ describe('theme definitions', () => {
     expect(bad.definition).toBeUndefined()
     expect(bad.errors).toContain('id: lowercase letters, digits and hyphens, at most 48 characters')
     expect(bad.errors.some(error => error.startsWith('dark.colours.bg:'))).toBe(true)
-    expect(ThemeDefinitionModel.parse({ ...NORD, id: 'dracula' }, PRESET_IDS).errors).toEqual(['id: "dracula" is a built-in preset; pick another id'])
+    expect(ThemeDefinitionModel.parse({ ...NORD, id: 'dracula' }, PRESET_IDS).errors).toEqual(['id: "dracula" is a built-in theme; pick another id'])
     expect(ThemeDefinitionModel.parse({ id: 'x', label: 'X' }).errors).toContain('give at least one scheme: dark, light or both')
   })
 
@@ -56,7 +56,7 @@ describe('theme definitions', () => {
     expect(withLayer('opacity: 1', 'body { display: none }')).toEqual(['dark.backdrop: keyframes may only hold @keyframes blocks'])
     expect(withLayer('opacity: 1', '@keyframes a { from { opacity: 0 }')).toEqual(['dark.backdrop: keyframes have unbalanced braces'])
     expect(ThemeDefinitionModel.parse({ ...NORD, dark: { ...NORD.dark, backdrop: { layers: ['a: 1', 'b: 1', 'c: 1', 'd: 1'] } } }).errors).toEqual([
-      'dark.backdrop: needs 1 to 3 layers',
+      'dark.backdrop: at most 3 layers, and 4 items with the scene and the glass',
     ])
   })
 
@@ -110,7 +110,7 @@ describe('built-in Dracula', () => {
     const scene = `${RUNTIME_DARK_SELECTOR} ${BACKDROP_HOST}`
     expect(css).toContain(`${scene} {\n  isolation: isolate;`)
     expect(css).toContain(`${scene}::before {`)
-    expect(css).toContain(`${scene}::after {`)
+    expect(css).toContain(`${scene} .dv-dockview::after {`)
     expect(css).toContain('@keyframes dshx-dracula-twinkle { from { opacity: 0.15; } to { opacity: 1; } }')
     expect(css).not.toContain(`${RUNTIME_LIGHT_SELECTOR}:not([data-ds-dark-theme]) ${BACKDROP_HOST}`)
     expect(css).not.toMatch(/url\(/u)

@@ -678,7 +678,7 @@ export const FEATURE_CATALOG: FeatureCatalog = {
       "name": "ui-styles",
       "description": "The one bundle that compiles and injects the shared plugin-ui Tailwind stylesheet (the ordered union of every owned plugin's classes) and owns the Appearance theme: presets, palette and font settings, and the theme agent tools",
       "ui": true,
-      "features": 3
+      "features": 4
     },
     {
       "name": "usage",
@@ -27521,22 +27521,22 @@ export const FEATURE_CATALOG: FeatureCatalog = {
       "plugin": "ui-styles",
       "id": "appearance-theme",
       "title": "Appearance theme: presets, palette and fonts",
-      "summary": "Settings › General › Appearance picks a colour preset (Warm stone default, Neutral, High contrast, Slate blue, Moss), optional hue, tint, accent and contrast overrides, and the UI and code fonts. The client regenerates the palette with the plugin-ui generator and injects it over…",
+      "summary": "Settings › General › Appearance picks a colour preset (Warm stone default, Neutral, High contrast, Slate blue, Moss, Dracula), optional hue, tint, accent and contrast overrides, and the UI and code fonts. The client regenerates the palette with the plugin-ui generator and inject…",
       "destination": "settings",
       "currentSurface": "Settings › General › Appearance; agent tools theme_get / theme_set",
       "reach": [
         {
-          "text": "click button \"Account menu\"",
+          "text": "click button \"Settings\"",
           "action": "click",
           "by": "button",
-          "name": "Account menu",
+          "name": "Settings",
           "value": null
         },
         {
-          "text": "click menuitem \"Settings*\"",
+          "text": "click text \"All settings\"",
           "action": "click",
-          "by": "menuitem",
-          "name": "Settings*",
+          "by": "text",
+          "name": "All settings",
           "value": null
         },
         {
@@ -27558,6 +27558,21 @@ export const FEATURE_CATALOG: FeatureCatalog = {
       "onboarding": {
         "firstAction": "Open Settings › General › Appearance and pick a preset, or change the accent and the interface font.",
         "doneWhen": "The whole app takes the new colours and fonts at once, light and dark."
+      }
+    },
+    {
+      "key": "ui-styles#saved-themes",
+      "plugin": "ui-styles",
+      "id": "saved-themes",
+      "title": "Saved themes: any theme on request, and Dracula",
+      "summary": "A theme is data: exact colours per scheme (eleven neutral steps, accent and status colours), optional syntax colours and an optional animated backdrop behind the conversation. The agent saves any theme the user asks for with theme_define and it applies live, no restart; theme_se…",
+      "destination": "settings",
+      "currentSurface": "Agent tools theme_define / theme_set (customTheme) / theme_remove / theme_get; Settings › General › Appearance (Custom theme id, Dracula preset)",
+      "reach": [],
+      "reachNarrow": null,
+      "onboarding": {
+        "firstAction": "Ask the agent for a theme, for example “make DSH look like Nord”, or pick the Dracula preset in Settings › Appearance.",
+        "doneWhen": "The app takes the theme's exact colours at once, with its backdrop behind the conversation if it has one."
       }
     },
     {

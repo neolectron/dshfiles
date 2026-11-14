@@ -2,11 +2,13 @@ import {
   AppearanceModel,
   DEFAULT_APPEARANCE,
   PRESET_IDS,
+  RESERVED_THEME_IDS,
   THEME_PRESETS,
   type AppearanceSettings,
   type ThemePresetId,
 } from '@dshfiles/plugin-ui/theme/appearance'
 import { ThemeDefinitionModel, type ThemeDefinition } from '@dshfiles/plugin-ui/theme/definition'
+import { GALLERY_IDS, GALLERY_THEMES } from '@dshfiles/plugin-ui/theme/gallery'
 import type { ThemeDefineInput, ThemeSetInput, ThemeState } from './api.js'
 
 type Overrides = Pick<AppearanceSettings, 'greyHue' | 'greyTint' | 'accentHue' | 'contrast'>
@@ -71,8 +73,10 @@ function nextAppearance(current: AppearanceSettings, input: ThemeSetInput): Appe
     if (value !== undefined) overrides[key] = value
   }
   const customTheme = input.customTheme !== undefined ? (input.customTheme ?? '') : input.preset !== undefined ? '' : (current.customTheme ?? '')
-  if (customTheme !== '' && !AppearanceModel.customThemes(current).some(theme => theme.id === customTheme))
-    throw new InvalidThemeDefinition([`no saved theme "${customTheme}"; theme_get lists savedThemes, theme_define saves a new one`])
+  if (customTheme !== '' && !GALLERY_IDS.includes(customTheme) && !AppearanceModel.customThemes(current).some(theme => theme.id === customTheme))
+    throw new InvalidThemeDefinition([
+      `no saved or gallery theme "${customTheme}"; theme_get lists savedThemes and galleryThemes, theme_define saves a new one`,
+    ])
   return {
     preset: input.preset ?? current.preset,
     ...overrides,
@@ -86,7 +90,7 @@ function nextAppearance(current: AppearanceSettings, input: ThemeSetInput): Appe
 
 /** The settings after saving a theme (replacing one with the same id), switched to it unless `apply` is false. */
 function defineTheme(current: AppearanceSettings, input: ThemeDefineInput): AppearanceSettings {
-  const { definition, errors } = ThemeDefinitionModel.parse(input.theme, PRESET_IDS)
+  const { definition, errors } = ThemeDefinitionModel.parse(input.theme, RESERVED_THEME_IDS)
   if (definition === undefined) throw new InvalidThemeDefinition(errors)
   const kept = (current.customThemes ?? []).filter(raw => !(typeof raw === 'object' && raw !== null && 'id' in raw && raw.id === definition.id))
   const customThemes = [...kept, definition]
@@ -106,7 +110,8 @@ function defineTheme(current: AppearanceSettings, input: ThemeDefineInput): Appe
 function removeTheme(current: AppearanceSettings, id: string): AppearanceSettings {
   const before = current.customThemes ?? []
   const customThemes = before.filter(raw => !(typeof raw === 'object' && raw !== null && 'id' in raw && raw.id === id))
-  if (customThemes.length === before.length) throw new InvalidThemeDefinition([`no saved theme "${id}"`])
+  if (customThemes.length === before.length)
+    throw new InvalidThemeDefinition([GALLERY_IDS.includes(id) ? `"${id}" is a built-in gallery theme and cannot be removed` : `no saved theme "${id}"`])
   return { ...current, customThemes, customTheme: current.customTheme === id ? '' : (current.customTheme ?? '') }
 }
 
@@ -130,7 +135,7 @@ const savedTheme = (theme: ThemeDefinition): ThemeState['savedThemes'][number] =
 function themeState(settings: AppearanceSettings, scheme: string): ThemeState {
   const resolved = AppearanceModel.resolveAppearance(settings)
   const saved = AppearanceModel.customThemes(settings)
-  const active = saved.find(theme => theme.id === settings.customTheme)
+  const active = [...saved, ...GALLERY_THEMES].find(theme => theme.id === settings.customTheme)
   const definition = AppearanceModel.activeTheme(settings).definition
   return {
     preset: settings.preset,
@@ -158,6 +163,7 @@ function themeState(settings: AppearanceSettings, scheme: string): ThemeState {
       settings.readingFont === DEFAULT_APPEARANCE.readingFont,
     presets: THEME_PRESETS.map(({ id, label, description }) => ({ id, label, description })),
     savedThemes: saved.map(savedTheme),
+    galleryThemes: GALLERY_THEMES.map(savedTheme),
     contrastWarnings: definition === undefined ? [] : ThemeDefinitionModel.contrastWarnings(definition),
   }
 }

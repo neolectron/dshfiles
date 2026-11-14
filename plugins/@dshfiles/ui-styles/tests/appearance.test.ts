@@ -149,7 +149,16 @@ describe('saved themes', () => {
     expect(() => ThemeStateModel.defineTheme(start, { theme: { id: 'x', label: 'X', dark: { colours: { bg: 'nope' } } } as never })).toThrow(
       /dark\.colours\.bg/u,
     )
-    expect(() => ThemeStateModel.nextAppearance(start, { customTheme: 'missing' })).toThrow(/no saved theme "missing"/u)
+    expect(() => ThemeStateModel.nextAppearance(start, { customTheme: 'missing' })).toThrow(/no saved or gallery theme "missing"/u)
+  })
+
+  it('switches to a built-in gallery theme, which cannot be redefined or removed', () => {
+    const lagoon = ThemeStateModel.nextAppearance(start, { customTheme: 'honu-lagoon' })
+    const state = ThemeStateModel.themeState(lagoon, 'light')
+    expect(state).toMatchObject({ customTheme: 'honu-lagoon', isDefault: false, contrastWarnings: [] })
+    expect(state.galleryThemes.map(theme => theme.id)).toContain('night-reef')
+    expect(() => ThemeStateModel.defineTheme(start, { theme: { ...NORD, id: 'aurora' } })).toThrow(/built-in theme/u)
+    expect(() => ThemeStateModel.removeTheme(lagoon, 'honu-lagoon')).toThrow(/built-in gallery theme/u)
   })
 
   it('removes a theme and falls back to the preset when it was in use', () => {

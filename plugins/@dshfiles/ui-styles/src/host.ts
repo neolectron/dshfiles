@@ -5,6 +5,7 @@ import type { SettingsValue } from '@dshfiles/dshx/settings'
 import { Effect, Option, Schema } from 'effect'
 import { themeApi } from './api.js'
 import { appearanceSettings, UI_STYLES_SETTINGS_NAMESPACE } from './settings.js'
+import { Scenes } from './scenes.js'
 import { InvalidThemeDefinition, ThemeStateModel } from './theme-state.js'
 import type { AppearanceSettings as Appearance } from '@dshfiles/plugin-ui/theme/appearance'
 
@@ -60,6 +61,12 @@ export default DshxPlugin.make({
       set: input => update(current => ThemeStateModel.nextAppearance(current, input)),
       define: input => update(current => ThemeStateModel.defineTheme(current, input)),
       remove: input => update(current => ThemeStateModel.removeTheme(current, input.id)),
+      scene: input =>
+        Effect.gen(function* () {
+          const svg = Scenes.svg(input.id)
+          if (svg === undefined) return yield* Effect.fail(new PluginApiError(`No built-in scene "${input.id}".`, { code: 'unknown-scene' }))
+          return { id: input.id, svg }
+        }),
     }),
   ],
 })

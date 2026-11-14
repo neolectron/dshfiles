@@ -66,6 +66,14 @@
       "types": "./src/theme/theme-definition.ts",
       "default": "./src/theme/theme-definition.ts"
     },
+    "./theme/scenes": {
+      "types": "./src/theme/scene-catalog.ts",
+      "default": "./src/theme/scene-catalog.ts"
+    },
+    "./theme/gallery": {
+      "types": "./src/theme/gallery.ts",
+      "default": "./src/theme/gallery.ts"
+    },
     "./vite": {
       "types": "./src/vite.ts",
       "default": "./src/vite.ts"

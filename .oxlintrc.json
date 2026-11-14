@@ -158,7 +158,8 @@
     "plugins/@dshfiles/sidebar-terminal/src/native/**",
     "plugins/@dshfiles/tool-fs/src/native/**",
     "plugins/@dshfiles/tool-bash/src/native/**",
-    "plugins/@dshfiles/phone-pairing/experiments/**"
+    "plugins/@dshfiles/phone-pairing/experiments/**",
+    "plugins/@dshfiles/ui-styles/src/vendor/**"
   ],
   "overrides": [
     {

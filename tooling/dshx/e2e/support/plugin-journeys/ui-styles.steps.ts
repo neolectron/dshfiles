@@ -135,6 +135,25 @@ Then('the page background token is {string}', async ({ page }: { page: Page }, b
   })
 })
 
+When('a new thread on the fake model calls theme_set with the gallery theme {string}', async ({ page }: { page: Page }, id: string) => {
+  await page.getByRole('button', { name: 'New session', exact: true }).first().click()
+  await selectModelForNewThread(page, FAKE_MODEL)
+  await sendMessage(page, toolCall('theme_set', { customTheme: id }))
+})
+
+Then('theme_set answered with the saved theme {string}', async ({ page }: { page: Page }, id: string) => {
+  await recordAssertion(page, 'ui-styles-gallery-theme-result', () => expect.poll(() => lastToolResult(page)).toContain(`"customTheme":"${id}"`))
+})
+
+Then('the runtime theme paints the scene of {string}', async ({ page }: { page: Page }, id: string) => {
+  await recordAssertion(page, 'ui-styles-gallery-scene-painted', async () => {
+    // The scene's SVG comes from the Host's scene method, then lands in the runtime sheet as a data URL.
+    await expect.poll(() => page.evaluate(() => document.getElementById('dshfiles-ui-styles-theme')?.textContent ?? '')).toContain('data:image/svg+xml')
+    expect(await page.evaluate(() => document.getElementById('dshfiles-ui-styles-theme')?.textContent ?? '')).toContain('backdrop-filter: blur(')
+    expect(id).not.toBe('')
+  })
+})
+
 When('the thread calls theme_remove for {string}', async ({ page }: { page: Page }, id: string) => {
   await sendMessage(page, toolCall('theme_remove', { id, confirm: true }))
 })

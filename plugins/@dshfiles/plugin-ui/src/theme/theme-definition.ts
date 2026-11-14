@@ -8,6 +8,7 @@
  * the Shiki tokens it gives. A scheme the definition leaves out keeps the generated palette.
  */
 import { PaletteMath, type PaletteInput, type Scheme } from './palette.ts'
+import { SCENE_IDS, SceneCatalog, type SceneGlass } from './scene-catalog.ts'
 
 /** The eleven neutral steps, in palette order (see `Palette.neutral`). */
 export const NEUTRAL_ROLES = ['bg', 'panel', 'raised', 'selected', 'line', 'border', 'borderStrong', 'strong', 'faint', 'muted', 'text'] as const
@@ -56,8 +57,12 @@ const SYNTAX_ROLE_SET: ReadonlySet<string> = new Set(SYNTAX_ROLES)
  * Self-contained: no `url()`, `@import` or braces in a layer, so a theme never loads anything from the network.
  */
 export interface Backdrop {
-  readonly layers: readonly string[]
+  /** A built-in animated scene (`SCENES` in scene-catalog.ts), painted first, at the back. */
+  readonly scene?: string
+  readonly layers?: readonly string[]
   readonly keyframes?: string
+  /** A frosted layer over the scene and layers, under the conversation column: blur, tint and opacity. */
+  readonly glass?: SceneGlass
 }
 
 export interface SchemeTheme {
@@ -67,7 +72,7 @@ export interface SchemeTheme {
 }
 
 export interface ThemeDefinition {
-  /** Lowercase letters, digits and hyphens; a built-in preset id is refused. */
+  /** Lowercase letters, digits and hyphens; a built-in preset or gallery id is refused. */
   readonly id: string
   readonly label: string
   readonly description?: string
@@ -77,6 +82,8 @@ export interface ThemeDefinition {
 }
 
 export const MAX_BACKDROP_LAYERS = 3
+/** Pseudo-elements that can hold a backdrop item (scene, layers, glass). */
+const MAX_BACKDROP_ITEMS = 4
 const MAX_LAYER_LENGTH = 8_000
 const MAX_KEYFRAMES_LENGTH = 4_000
 const HEX = /^#[0-9a-f]{6}$/iu
@@ -139,11 +146,20 @@ function checkScheme(value: unknown, where: string, errors: string[]): SchemeThe
   let backdrop: Backdrop | undefined
   if (value.backdrop !== undefined) {
     const raw = value.backdrop
-    if (!isRecord(raw) || !Array.isArray(raw.layers) || raw.layers.length === 0 || raw.layers.length > MAX_BACKDROP_LAYERS)
-      errors.push(`${where}.backdrop: needs 1 to ${MAX_BACKDROP_LAYERS} layers`)
+    const rawLayers: readonly unknown[] = isRecord(raw) && Array.isArray(raw.layers) ? raw.layers : []
+    const scene = isRecord(raw) && typeof raw.scene === 'string' ? raw.scene : undefined
+    const glass = isRecord(raw) ? checkGlass(raw.glass, `${where}.backdrop.glass`, errors) : undefined
+    const items = rawLayers.length + (scene === undefined ? 0 : 1) + (glass === undefined ? 0 : 1)
+    if (!isRecord(raw) || (isRecord(raw) && raw.layers !== undefined && !Array.isArray(raw.layers)))
+      errors.push(`${where}.backdrop: must be an object with a scene, layers or both`)
+    else if (raw.scene !== undefined && (scene === undefined || !SCENE_IDS.includes(scene)))
+      errors.push(`${where}.backdrop.scene: one of ${SCENE_IDS.join(', ')}`)
+    else if (scene === undefined && rawLayers.length === 0) errors.push(`${where}.backdrop: needs a scene or 1 to ${MAX_BACKDROP_LAYERS} layers`)
+    else if (rawLayers.length > MAX_BACKDROP_LAYERS || items > MAX_BACKDROP_ITEMS)
+      errors.push(`${where}.backdrop: at most ${MAX_BACKDROP_LAYERS} layers, and ${MAX_BACKDROP_ITEMS} items with the scene and the glass`)
     else {
       const layers: string[] = []
-      raw.layers.forEach((layer, index) => {
+      rawLayers.forEach((layer, index) => {
         if (typeof layer !== 'string' || layer.trim() === '') errors.push(`${where}.backdrop.layers[${index}]: CSS declarations are required`)
         else if (layer.length > MAX_LAYER_LENGTH) errors.push(`${where}.backdrop.layers[${index}]: longer than ${MAX_LAYER_LENGTH} characters`)
         else if (/[{}]/u.test(layer) || FORBIDDEN.test(layer))
@@ -152,7 +168,12 @@ function checkScheme(value: unknown, where: string, errors: string[]): SchemeThe
       })
       if (raw.keyframes !== undefined && typeof raw.keyframes !== 'string') errors.push(`${where}.backdrop.keyframes: must be a string`)
       else if (typeof raw.keyframes === 'string') checkKeyframes(raw.keyframes, errors, `${where}.backdrop`)
-      backdrop = typeof raw.keyframes === 'string' && raw.keyframes.trim() !== '' ? { layers, keyframes: raw.keyframes.trim() } : { layers }
+      let parsed: Backdrop = {}
+      if (scene !== undefined) parsed = { ...parsed, scene }
+      if (layers.length > 0) parsed = { ...parsed, layers }
+      if (typeof raw.keyframes === 'string' && raw.keyframes.trim() !== '') parsed = { ...parsed, keyframes: raw.keyframes.trim() }
+      if (glass !== undefined) parsed = { ...parsed, glass }
+      backdrop = parsed
     }
   }
   const full = completeColours(colours)
@@ -161,6 +182,16 @@ function checkScheme(value: unknown, where: string, errors: string[]): SchemeThe
   if (Object.keys(syntax).length > 0) scheme = { ...scheme, syntax }
   if (backdrop !== undefined) scheme = { ...scheme, backdrop }
   return scheme
+}
+
+function checkGlass(value: unknown, where: string, errors: string[]): SceneGlass | undefined {
+  if (value === undefined) return undefined
+  const inRange = (raw: unknown, min: number, max: number): raw is number => typeof raw === 'number' && Number.isFinite(raw) && raw >= min && raw <= max
+  if (!isRecord(value) || !inRange(value.blur, 0, 30) || !inRange(value.opacity, 0, 1) || typeof value.tint !== 'string' || !HEX.test(value.tint)) {
+    errors.push(`${where}: blur 0–30, a #rrggbb tint and opacity 0–1`)
+    return undefined
+  }
+  return { blur: value.blur, tint: value.tint.toLowerCase(), opacity: value.opacity }
 }
 
 /** Every colour role, or undefined when one is missing (its error is already recorded). */
@@ -200,7 +231,7 @@ function parseDefinition(value: unknown, reservedIds: readonly string[] = []): P
   if (!isRecord(value)) return { errors: ['a theme must be an object'] }
   const id = typeof value.id === 'string' ? value.id : ''
   if (!ID.test(id)) errors.push('id: lowercase letters, digits and hyphens, at most 48 characters')
-  else if (reservedIds.includes(id)) errors.push(`id: "${id}" is a built-in preset; pick another id`)
+  else if (reservedIds.includes(id)) errors.push(`id: "${id}" is a built-in theme; pick another id`)
   const label = typeof value.label === 'string' ? value.label.trim() : ''
   if (label === '' || label.length > 60) errors.push('label: 1 to 60 characters')
   if (value.description !== undefined && typeof value.description !== 'string') errors.push('description: must be a string')
@@ -287,10 +318,45 @@ function pins(theme: SchemeTheme): string[] {
 /** The main workbench: the conversation and its tabs, never the sidebars, dialogs or the composer. */
 export const BACKDROP_HOST = '[data-workbench-region="main"] .dshfiles-workbench-theme'
 
-function backdropCss(scope: string, backdrop: Backdrop): string {
+/** Scene SVG sources by id, as the client has them; a scene not loaded yet is left out until it arrives. */
+export type SceneSources = ReadonlyMap<string, string>
+
+const declarationLines = (text: string): string[] =>
+  text
+    .split(';')
+    .map(part => part.trim())
+    .filter(part => part !== '')
+    .map(part => `  ${part};`)
+
+/**
+ * The glass: a tint at its opacity over a blur of what lies under it, strongest under the conversation column and fading
+ * out toward the sides, so the scene stays crisp at the edges as in Claude Code.
+ */
+function glassDeclarations(glass: SceneGlass): string[] {
+  const fade = 'linear-gradient(90deg, transparent 0%, #000 22%, #000 78%, transparent 100%)'
+  return [
+    `  background-color: ${rgba(glass.tint, glass.opacity)};`,
+    ...(glass.blur > 0 ? [`  backdrop-filter: blur(${glass.blur}px);`, `  -webkit-backdrop-filter: blur(${glass.blur}px);`] : []),
+    `  mask-image: ${fade};`,
+    `  -webkit-mask-image: ${fade};`,
+  ]
+}
+
+function backdropCss(scope: string, backdrop: Backdrop, scenes: SceneSources): string {
   const host = `${scope} ${BACKDROP_HOST}`
-  // Three pseudo-elements host the layers: two on the shell, one on its dockview; all sit under the content.
-  const slots = [`${host}::before`, `${host} .dv-dockview::before`, `${host}::after`]
+  // Four pseudo-elements host the items, back to front: two on the dockview between two on the shell, all under content.
+  const slots = [`${host}::before`, `${host} .dv-dockview::before`, `${host} .dv-dockview::after`, `${host}::after`]
+  const sceneSource = backdrop.scene === undefined ? undefined : scenes.get(backdrop.scene)
+  const items: string[][] = []
+  if (sceneSource !== undefined)
+    items.push([
+      '  background-image: ' + SceneCatalog.image(sceneSource) + ';',
+      '  background-size: cover;',
+      '  background-position: center;',
+      '  background-repeat: no-repeat;',
+    ])
+  for (const layer of backdrop.layers ?? []) items.push(declarationLines(layer))
+  if (backdrop.glass !== undefined) items.push(glassDeclarations(backdrop.glass))
   const blocks = [
     // The shell becomes the backdrop's stacking context; its dockview surfaces turn transparent so the layers show.
     `${host} {`,
@@ -301,19 +367,14 @@ function backdropCss(scope: string, backdrop: Backdrop): string {
     '  --dv-inactivegroup-visiblepanel-tab-background-color: transparent;',
     '}',
   ]
-  backdrop.layers.forEach((layer, index) => {
-    const declarations = layer
-      .split(';')
-      .map(part => part.trim())
-      .filter(part => part !== '')
-      .map(part => `  ${part};`)
+  items.forEach((declarations, index) => {
     blocks.push(
       [
         `${slots[index]} {`,
         "  content: '';",
         '  position: absolute;',
         '  inset: 0;',
-        `  z-index: ${index - 3};`,
+        `  z-index: ${index - MAX_BACKDROP_ITEMS};`,
         '  pointer-events: none;',
         ...declarations,
         '}',
@@ -321,8 +382,9 @@ function backdropCss(scope: string, backdrop: Backdrop): string {
     )
   })
   if (backdrop.keyframes !== undefined) blocks.push(backdrop.keyframes)
-  const used = slots.slice(0, backdrop.layers.length).join(', ')
-  blocks.push('@media (prefers-reduced-motion: reduce) {', `  ${used} { animation: none !important; }`, '}')
+  const used = slots.slice(0, items.length).join(', ')
+  const resting = sceneSource === undefined ? [] : [`  ${slots[0]} { background-image: ${SceneCatalog.image(SceneCatalog.resting(sceneSource))}; }`]
+  blocks.push('@media (prefers-reduced-motion: reduce) {', `  ${used} { animation: none !important; }`, ...resting, '}')
   return blocks.join('\n')
 }
 
@@ -330,16 +392,22 @@ function backdropCss(scope: string, backdrop: Backdrop): string {
  * The CSS a definition adds after the generated blocks: per scheme, the pins under the runtime selector and the backdrop.
  * The light backdrop is guarded so it never shows in dark.
  */
-function definitionCss(definition: ThemeDefinition, selectors: { readonly light: string; readonly dark: string }): string {
+function definitionCss(definition: ThemeDefinition, selectors: { readonly light: string; readonly dark: string }, scenes: SceneSources = new Map()): string {
   const parts: string[] = []
   for (const scheme of ['light', 'dark'] as const satisfies readonly Scheme[]) {
     const theme = definition[scheme]
     if (theme === undefined) continue
     const selector = selectors[scheme]
     parts.push([`${selector} {`, ...pins(theme), '}'].join('\n'))
-    if (theme.backdrop !== undefined) parts.push(backdropCss(scheme === 'light' ? `${selector}:not([data-ds-dark-theme])` : selector, theme.backdrop))
+    if (theme.backdrop !== undefined) parts.push(backdropCss(scheme === 'light' ? `${selector}:not([data-ds-dark-theme])` : selector, theme.backdrop, scenes))
   }
   return parts.join('\n\n')
+}
+
+/** The built-in scenes a definition paints, in either scheme. */
+function scenesOf(definition: ThemeDefinition): string[] {
+  const ids = [definition.dark?.backdrop?.scene, definition.light?.backdrop?.scene].filter(id => id !== undefined)
+  return [...new Set(ids)]
 }
 
 /** Theme definitions: parsing, contrast report, generator input and CSS. */
@@ -348,4 +416,5 @@ export class ThemeDefinitionModel {
   static readonly contrastWarnings = contrastWarnings
   static readonly baseInput = baseInput
   static readonly css = definitionCss
+  static readonly scenesOf = scenesOf
 }

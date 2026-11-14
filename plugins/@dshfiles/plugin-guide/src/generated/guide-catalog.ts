@@ -3514,7 +3514,7 @@ export const GUIDE_CATALOG: GuideCatalog = {
         "@dshfiles/ai-accounts › model-routing"
       ],
       "details": [
-        "Used by 62 catalog feature(s)",
+        "Used by 63 catalog feature(s)",
         "Destinations in use: settings"
       ],
       "source": "tooling/dshx/packages/dshx/src/project/features.ts",

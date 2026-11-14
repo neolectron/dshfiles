@@ -6,9 +6,10 @@
  * there is no flash and no second copy of the block.
  */
 import { DRACULA_THEME } from './dracula.ts'
+import { GALLERY_IDS, GALLERY_THEMES } from './gallery.ts'
 import { WARM_STONE, type PaletteInput } from './palette.ts'
 import { ThemeCss } from './theme-css.ts'
-import { ThemeDefinitionModel, type ThemeDefinition } from './theme-definition.ts'
+import { ThemeDefinitionModel, type SceneSources, type ThemeDefinition } from './theme-definition.ts'
 
 export type ThemePresetId = 'warm-stone' | 'neutral' | 'high-contrast' | 'slate-blue' | 'moss' | 'dracula'
 export type UiFont = 'geist' | 'system'
@@ -52,6 +53,9 @@ export const THEME_PRESETS: readonly ThemePreset[] = [
 
 export const PRESET_IDS: readonly string[] = THEME_PRESETS.map(preset => preset.id)
 
+/** Ids a saved theme may not take: the presets and the built-in gallery themes. */
+export const RESERVED_THEME_IDS: readonly string[] = [...PRESET_IDS, ...GALLERY_IDS]
+
 export const DEFAULT_PRESET: ThemePresetId = 'warm-stone'
 
 /** The stored Appearance settings: a preset, optional per-value overrides, and the two font choices. */
@@ -67,7 +71,7 @@ export interface AppearanceSettings {
   readonly codeFont: CodeFont
   /** Reply prose in the transcript: the interface sans (default) or a system serif (productivity pass T6.6). */
   readonly readingFont: ReadingFont
-  /** Id of a saved theme in `customThemes`; when it names one, it replaces the preset. Empty: the preset. */
+  /** Id of a saved theme in `customThemes` or of a built-in gallery theme; when it names one, it replaces the preset. Empty: the preset. */
   readonly customTheme?: string
   /** Saved theme definitions, as stored: each is parsed on use and an invalid one is skipped. */
   readonly customThemes?: readonly unknown[]
@@ -97,7 +101,7 @@ const pick = (override: number | undefined, fallback: number, key: keyof typeof 
 function customThemes(settings: Partial<AppearanceSettings> | undefined): ThemeDefinition[] {
   const out: ThemeDefinition[] = []
   for (const raw of settings?.customThemes ?? []) {
-    const { definition } = ThemeDefinitionModel.parse(raw, PRESET_IDS)
+    const { definition } = ThemeDefinitionModel.parse(raw, RESERVED_THEME_IDS)
     if (definition !== undefined && !out.some(theme => theme.id === definition.id)) out.push(definition)
   }
   return out
@@ -111,7 +115,7 @@ export interface ActiveTheme {
 
 function activeTheme(settings: Partial<AppearanceSettings> | undefined): ActiveTheme {
   const wanted = settings?.customTheme ?? ''
-  const custom = wanted === '' ? undefined : customThemes(settings).find(theme => theme.id === wanted)
+  const custom = wanted === '' ? undefined : [...customThemes(settings), ...GALLERY_THEMES].find(theme => theme.id === wanted)
   if (custom !== undefined) return { base: ThemeDefinitionModel.baseInput(custom), definition: custom }
   const preset = findPreset(settings?.preset ?? DEFAULT_PRESET)
   const base = { hue: preset.hue, chroma: preset.chroma, accentHue: preset.accentHue, contrast: preset.contrast }
@@ -174,7 +178,7 @@ export const DEFAULT_FONT_STACKS = { text: UI_FONT_STACKS.geist, code: CODE_FONT
  * The CSS the runtime injects for some Appearance settings, or `''` when they reproduce the static default. Palette
  * and font overrides are independent: a font-only change emits only the font block.
  */
-function runtimeThemeCss(settings: Partial<AppearanceSettings> | undefined): string {
+function runtimeThemeCss(settings: Partial<AppearanceSettings> | undefined, scenes: SceneSources = new Map()): string {
   const input = resolveAppearance(settings)
   const { base, definition } = activeTheme(settings)
   // An override asks for the generated palette: the definition's exact colours and backdrop apply only without one.
@@ -183,7 +187,7 @@ function runtimeThemeCss(settings: Partial<AppearanceSettings> | undefined): str
   if (!isDefaultInput(input) || pinned !== undefined) {
     const block = (selector: string, scheme: 'light' | 'dark') => [`${selector} {`, ...ThemeCss.blockDeclarations(input, scheme), '}'].join('\n')
     parts.push(block(RUNTIME_LIGHT_SELECTOR, 'light'), block(RUNTIME_DARK_SELECTOR, 'dark'))
-    if (pinned !== undefined) parts.push(ThemeDefinitionModel.css(pinned, { light: RUNTIME_LIGHT_SELECTOR, dark: RUNTIME_DARK_SELECTOR }))
+    if (pinned !== undefined) parts.push(ThemeDefinitionModel.css(pinned, { light: RUNTIME_LIGHT_SELECTOR, dark: RUNTIME_DARK_SELECTOR }, scenes))
   }
   const uiFont = settings?.interfaceFont ?? DEFAULT_APPEARANCE.interfaceFont
   const codeFont = settings?.codeFont ?? DEFAULT_APPEARANCE.codeFont
@@ -207,6 +211,13 @@ function runtimeThemeCss(settings: Partial<AppearanceSettings> | undefined): str
   return parts.join('\n\n')
 }
 
+/** The built-in scenes the active theme paints, so the client can ask the Host for their SVG. */
+function scenesNeeded(settings: Partial<AppearanceSettings> | undefined): string[] {
+  const input = resolveAppearance(settings)
+  const { base, definition } = activeTheme(settings)
+  return definition !== undefined && isPresetInput(base, input) ? ThemeDefinitionModel.scenesOf(definition) : []
+}
+
 /** The static block for a preset, for review tables. */
 function presetThemeCss(id: ThemePresetId): string {
   return ThemeCss.themeCss(resolveAppearance({ preset: id }))
@@ -220,5 +231,6 @@ export class AppearanceModel {
   static readonly resolveAppearance = resolveAppearance
   static readonly isDefaultInput = isDefaultInput
   static readonly runtimeThemeCss = runtimeThemeCss
+  static readonly scenesNeeded = scenesNeeded
   static readonly presetThemeCss = presetThemeCss
 }
