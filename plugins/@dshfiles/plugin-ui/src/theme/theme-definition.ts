@@ -361,15 +361,47 @@ export const READING_BOUNDS = { blur: { min: 0, max: 24 }, tint: { min: 0, max: 
 const UNSAMPLED_VEIL = 0.7
 
 /**
- * What must read over a backdrop, at the WCAG AA minimums `contrastWarnings` holds a theme to on its own background:
- * primary and secondary text (4.5:1) and tertiary text and icons (3:1: labels such as "Worked for 14s", the copy and
- * more-actions glyphs). Chrome outside the column also keeps the strong borders it draws with (the turn rail's ticks).
+ * How far a theme lifts its greys over its scene: tertiary halfway to secondary, secondary 30% toward primary. A
+ * textured scene reads as less contrast than a flat background with the same ratio, so the greys get a little brighter
+ * while the veil does the rest. Each theme lifts its own palette, and only inside conversations over its scene: plain
+ * themes and every other surface keep their greys.
+ */
+const GREY_LIFT = { faint: 0.5, muted: 0.3 } as const
+
+const mixHex = (from: string, to: string, amount: number): string => {
+  const [a, b] = [ReadabilityModel.hexToRgb(from), ReadabilityModel.hexToRgb(to)]
+  const channel = (index: 0 | 1 | 2) => Math.round(a[index] + (b[index] - a[index]) * amount)
+  return `#${[channel(0), channel(1), channel(2)].map(value => value.toString(16).padStart(2, '0')).join('')}`
+}
+
+/** The greys a theme's text uses over its scene, lifted from its own palette (`GREY_LIFT`). */
+export interface BackdropGreys {
+  /** Tertiary text and icons ("Worked for 14s", copy and more-actions glyphs). */
+  readonly faint: string
+  /** Secondary text ("5 other tool calls"). */
+  readonly muted: string
+}
+
+function backdropGreys(colours: SchemeTheme['colours']): BackdropGreys {
+  return { faint: mixHex(colours.faint, colours.muted, GREY_LIFT.faint), muted: mixHex(colours.muted, colours.text, GREY_LIFT.muted) }
+}
+
+/**
+ * What must read over a backdrop: primary text at 4.5:1, and the lifted secondary and tertiary greys at least as well
+ * as the theme's own greys read on its plain background, so a grey over a scene is never fainter than the same grey
+ * without one. Chrome outside the column also keeps its strong borders (the turn rail's ticks) at 3:1.
  * `ReadabilityModel.minimumVeil` never asks more of a colour than the theme's own background gives it.
  */
 function readabilityTargets(colours: SchemeTheme['colours'], chrome = false): VeilInput['texts'] {
-  const target = (hex: string, min: number) => ({ colour: ReadabilityModel.hexToRgb(hex), min })
-  const text = [target(colours.text, 4.5), target(colours.muted, 4.5), target(colours.faint, 3)]
-  return chrome ? [...text, target(colours.borderStrong, 3)] : text
+  const rgb = ReadabilityModel.hexToRgb
+  const plain = (hex: string) => ReadabilityModel.contrast(rgb(hex), rgb(colours.bg))
+  const greys = backdropGreys(colours)
+  const text = [
+    { colour: rgb(colours.text), min: 4.5 },
+    { colour: rgb(greys.muted), min: plain(colours.muted) },
+    { colour: rgb(greys.faint), min: plain(colours.faint) },
+  ]
+  return chrome ? [...text, { colour: rgb(colours.borderStrong), min: 3 }] : text
 }
 
 const declarationLines = (text: string): string[] =>
@@ -446,10 +478,12 @@ export interface VeilMaterial {
   readonly opacity: number
   /** Opacity of the theme background under chrome outside the column. */
   readonly chrome: number
+  /** The greys the conversation's text uses over the scene. */
+  readonly greys: BackdropGreys
 }
 
 function veilMaterial(theme: SchemeTheme, source: SceneSource | undefined, reading: ReadingVeil = { blur: 0, tint: 0 }): VeilMaterial {
-  return { opacity: veilOpacity(theme, source, reading), chrome: chromeOpacity(theme, source, reading) }
+  return { opacity: veilOpacity(theme, source, reading), chrome: chromeOpacity(theme, source, reading), greys: backdropGreys(theme.colours) }
 }
 
 /** The band the reading veil covers: the column's own width (the shared `--dsh-chat-content-width`) plus a margin. */
@@ -598,6 +632,21 @@ function backdropCss(scope: string, theme: SchemeTheme, backdrop: Backdrop, scen
     '  background-color: var(--dshx-tone-0);',
     '}',
   ]
+  // Over a scene the conversation's greys lift a little (`backdropGreys`); the veil is computed for these colours. The
+  // aliases are redeclared here because the body resolved them from the unlifted steps.
+  if (source !== undefined)
+    blocks.push(
+      `${host} [data-conversation-content] {`,
+      `  --dshx-tone-8: ${material.greys.faint};`,
+      `  --dshx-tone-9: ${material.greys.muted};`,
+      `  --dshx-tone-faint: ${material.greys.faint};`,
+      `  --dshx-tone-muted: ${material.greys.muted};`,
+      `  --dsw-alias-label-tertiary: ${material.greys.faint};`,
+      `  --dsw-alias-label-caption: ${material.greys.faint};`,
+      `  --dsw-alias-label-secondary: ${material.greys.muted};`,
+      `  --dsw-alias-label-document-preview: ${material.greys.muted};`,
+      '}',
+    )
   items.forEach((declarations, index) => {
     blocks.push(
       [

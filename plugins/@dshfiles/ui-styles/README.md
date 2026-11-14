@@ -50,11 +50,14 @@ plugin's classes), and the owner of the theme.
   `theme_get` lists them in `galleryThemes`. A saved theme can paint a scene too (`backdrop.scene`).
 - **Reading veil and readability.** Under the conversation column, a theme with a backdrop lays a veil of its own
   background colour. Its opacity is the smallest that keeps the theme's text readable anywhere over that scene
-  (`plugin-ui/src/theme/readability.ts`: primary and secondary text 4.5:1, tertiary text and icons such as "Worked for
-  14s" and the copy and more-actions glyphs 3:1, never more than the theme's own background gives a colour, over 95% of
-  a coarse sample of the scene's whole resting picture under its glass, taken once by the client; a column can sit
-  anywhere, in a split or beside a wide sidebar), so text never lands on a part of the scene it cannot be read on; 0
-  when the scene is calm enough. Two settings add to it: `readingBlur` (0–24 px) and `readingTint` (0–100 %), in
+  (`plugin-ui/src/theme/readability.ts`: primary text 4.5:1, and secondary and tertiary greys such as "5 other tool
+  calls", "Worked for 14s" and the copy and more-actions glyphs at least as readable as on the theme's plain
+  background, over 95% of a coarse sample of the scene's whole resting picture under its glass, taken once by the
+  client; a column can sit anywhere, in a split or beside a wide sidebar), so text never lands on a part of the scene
+  it cannot be read on; 0 when the scene is calm enough. A textured scene reads as less contrast than a flat
+  background, so inside conversations over its scene a theme also lifts its own greys a little (tertiary halfway to
+  secondary, secondary 30% toward primary, `GREY_LIFT` in `theme-definition.ts`) and its veil is computed for those
+  colours. Plain themes, Dracula's night sky and every other surface keep their greys. Two settings add to it: `readingBlur` (0–24 px) and `readingTint` (0–100 %), in
   Settings › Appearance or `theme_set { readingBlur, readingTint }`. Where the browser composites on a GPU (the client
   probes WebGL once and sets `data-dshx-gpu` on `<body>`; a software rasteriser such as SwiftShader or llvmpipe counts
   as none), the blur is a live `backdrop-filter` over the moving scene. Without one it is a pre-blurred still of the

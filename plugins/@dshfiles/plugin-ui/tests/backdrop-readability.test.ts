@@ -65,20 +65,34 @@ describe('every theme reads over its scene', () => {
       glass === undefined ? pixel : ReadabilityModel.composite(pixel, glass.colour, glass.opacity * ThemeDefinitionModel.glassWeight(((index % 64) + 0.5) / 64)),
     )
 
-    it(`${name}: text, secondary and tertiary text and icons read in a column anywhere over the scene, at every blur and tint`, () => {
+    /** The theme's own grey on its plain background: a grey over the scene must read at least that well. */
+    const plain = (colour: string) => ReadabilityModel.contrast(hex(colour), hex(c.bg)) - 0.06
+
+    it(`${name}: text reads, and its greys read as well as on the plain theme, in a column anywhere over the scene, at every blur and tint`, () => {
       for (const reading of READINGS) {
-        const { opacity } = ThemeDefinitionModel.veilMaterial(scheme, source, reading)
+        const { opacity, greys } = ThemeDefinitionModel.veilMaterial(scheme, source, reading)
         const under = glassed.map(pixel => ReadabilityModel.composite(pixel, hex(c.bg), opacity))
-        for (const [role, min] of [['text', 4.5], ['muted', 4.5], ['faint', 3]] as const)
-          expect(shareReading(under, c[role], floor(c[role], c.bg, min)), `${role} at ${JSON.stringify(reading)}`).toBeGreaterThanOrEqual(COVERAGE)
+        const at = JSON.stringify(reading)
+        expect(shareReading(under, c.text, floor(c.text, c.bg, 4.5)), `text at ${at}`).toBeGreaterThanOrEqual(COVERAGE)
+        expect(shareReading(under, greys.muted, plain(c.muted)), `muted at ${at}`).toBeGreaterThanOrEqual(COVERAGE)
+        expect(shareReading(under, greys.faint, plain(c.faint)), `faint at ${at}`).toBeGreaterThanOrEqual(COVERAGE)
       }
     })
 
+    it(`${name}: its greys over the scene are its own, a little brighter`, () => {
+      const { greys } = ThemeDefinitionModel.veilMaterial(scheme, source)
+      expect(ReadabilityModel.contrast(hex(greys.faint), hex(c.bg))).toBeGreaterThan(ReadabilityModel.contrast(hex(c.faint), hex(c.bg)))
+      expect(ReadabilityModel.contrast(hex(greys.faint), hex(c.bg))).toBeLessThan(ReadabilityModel.contrast(hex(c.muted), hex(c.bg)))
+      expect(ReadabilityModel.contrast(hex(greys.muted), hex(c.bg))).toBeGreaterThan(ReadabilityModel.contrast(hex(c.muted), hex(c.bg)))
+      expect(ReadabilityModel.contrast(hex(greys.muted), hex(c.bg))).toBeLessThan(ReadabilityModel.contrast(hex(c.text), hex(c.bg)))
+    })
+
     it(`${name}: chrome outside the column (the turn rail) reads on its surface`, () => {
-      const { chrome } = ThemeDefinitionModel.veilMaterial(scheme, source)
+      const { chrome, greys } = ThemeDefinitionModel.veilMaterial(scheme, source)
       const under = (source?.surround ?? []).map(pixel => ReadabilityModel.composite(pixel, hex(c.bg), chrome))
-      for (const [role, min] of [['muted', 4.5], ['faint', 3], ['borderStrong', 3]] as const)
-        expect(shareReading(under, c[role], floor(c[role], c.bg, min)), role).toBeGreaterThanOrEqual(COVERAGE)
+      expect(shareReading(under, greys.muted, plain(c.muted)), 'muted').toBeGreaterThanOrEqual(COVERAGE)
+      expect(shareReading(under, greys.faint, plain(c.faint)), 'faint').toBeGreaterThanOrEqual(COVERAGE)
+      expect(shareReading(under, c.borderStrong, floor(c.borderStrong, c.bg, 3)), 'borderStrong').toBeGreaterThanOrEqual(COVERAGE)
     })
 
     it(`${name}: the user's bubble stands apart from the veiled scene behind it`, () => {
@@ -127,6 +141,16 @@ describe('the backdrop stack', () => {
     expect(filtered.length).toBeGreaterThan(0)
     for (const rule of filtered) expect(rule.split('{')[0]).toContain(`[${GPU_ATTRIBUTE}]`)
     expect(css({ blur: 0, tint: 0 })).not.toContain('backdrop-filter')
+  })
+
+  it('lifts the conversation greys only for a theme painting a scene, from its own palette', () => {
+    const text = css({ blur: 3, tint: 0 })
+    const greys = ThemeDefinitionModel.veilMaterial(theme.light!, SAMPLED_SCENES.get('paper-garden')).greys
+    expect(text).toContain(`[data-conversation-content] {\n  --dshx-tone-8: ${greys.faint};`)
+    expect(text).toContain(`  --dsw-alias-label-secondary: ${greys.muted};`)
+    // Dracula's night sky (layers, no scene) and every plain theme keep their greys.
+    const dracula = ThemeDefinitionModel.css(DRACULA_THEME, { light: 'html:root body', dark: 'body[data-ds-dark-theme]' }, SAMPLED_SCENES, { blur: 3, tint: 0 })
+    expect(dracula).not.toContain('--dsw-alias-label-secondary')
   })
 
   it('leaves layer-only backdrops (Dracula) their own composer seat', () => {
